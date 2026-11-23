@@ -69,7 +69,7 @@ describe("explainBlocker", () => {
 		blocked_other: "Blocked: a branch rule is not met yet",
 		ci_pending: "Waiting for required checks to finish (build)",
 		review_missing: "Blocked: another required approval is missing",
-		approval_dismissed: "Blocked: an approval was dismissed",
+		approval_dismissed: "Blocked: a review was dismissed and needs another look",
 	};
 	const kinds = [
 		"conflicts",

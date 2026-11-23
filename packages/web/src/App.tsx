@@ -37,6 +37,7 @@ export function App() {
 		return openEventStream({
 			onEvent: (event) => (event.kind === "resync" ? load() : dispatch({ type: "event", event })),
 			onConnection: (connection) => dispatch({ type: "connection", connection }),
+			onRefused: load,
 		});
 	}, [signedOut, load]);
 

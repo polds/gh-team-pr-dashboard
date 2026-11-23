@@ -18,14 +18,18 @@ function check(name, pass, detail = "") {
 	console.log(`${pass ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
 }
 
-const server = spawn("node", ["packages/server/src/main.ts"], {
-	cwd: root,
-	env: { ...process.env, RADAR_DEMO: "1", RADAR_DEMO_INTERVAL_SECONDS: "0", PORT: String(port), RADAR_DATA_DIR: dataDir },
-	stdio: ["ignore", "pipe", "pipe"],
-});
 let serverLog = "";
-server.stdout.on("data", (chunk) => (serverLog += chunk));
-server.stderr.on("data", (chunk) => (serverLog += chunk));
+function startServer() {
+	const child = spawn("node", ["packages/server/src/main.ts"], {
+		cwd: root,
+		env: { ...process.env, RADAR_DEMO: "1", RADAR_DEMO_INTERVAL_SECONDS: "0", PORT: String(port), RADAR_DATA_DIR: dataDir },
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	child.stdout.on("data", (chunk) => (serverLog += chunk));
+	child.stderr.on("data", (chunk) => (serverLog += chunk));
+	return child;
+}
+let server = startServer();
 
 async function waitForServer() {
 	for (let i = 0; i < 50; i++) {
@@ -210,6 +214,15 @@ try {
 		await phonePage.waitForSelector('[data-testid="mine"]');
 		await phonePage.screenshot({ path: join(shots, "board-ken-390.png"), fullPage: true });
 	}
+
+	// A restarted demo server has a new session secret, so every open tab now holds a dead session.
+	const stopped = new Promise((r) => server.once("exit", r));
+	server.kill("SIGTERM");
+	await stopped;
+	server = startServer();
+	await waitForServer();
+	const signIn = await appears(ken.page, 'a[href="/auth/login"]', 45000);
+	check("a tab whose session ended lands on the sign-in screen when its stream reconnects", signIn !== null, `${signIn} ms`);
 } catch (error) {
 	check("the run finished without an exception", false, String(error && error.stack ? error.stack : error));
 	console.log(serverLog.split("\n").slice(-15).join("\n"));

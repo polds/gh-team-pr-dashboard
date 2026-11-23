@@ -68,7 +68,7 @@ export function explainBlocker(blocker: Blocker, checks: readonly string[]): str
 		case "review_missing":
 			return "Blocked: another required approval is missing";
 		case "approval_dismissed":
-			return "Blocked: an approval was dismissed";
+			return "Blocked: a review was dismissed and needs another look";
 		default: {
 			const _exhaustive: never = blocker;
 			return "Blocked: a merge rule this page cannot describe yet";

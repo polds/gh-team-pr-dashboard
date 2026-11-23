@@ -27,7 +27,7 @@ export function reviewerStatusText(status: ReviewerStatus): string {
 		case "requested":
 			return status.rerequested ? "Asked to review again" : "Review requested";
 		case "approval_dismissed":
-			return "Approval dismissed";
+			return "Review dismissed";
 		case "approved":
 			return "Approved";
 		case "feedback_outstanding":

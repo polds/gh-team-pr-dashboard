@@ -16,6 +16,8 @@ const BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000];
 export function openEventStream(handlers: {
 	onEvent(event: ServerEvent): void;
 	onConnection(connection: Connection): void;
+	/** The server refused the stream with an HTTP error. A 401 here is how an open tab learns that its session ended. */
+	onRefused(): void;
 }): () => void {
 	let source: EventSource | null = null;
 	let graceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -34,6 +36,7 @@ export function openEventStream(handlers: {
 		source.onerror = () => {
 			if (graceTimer === undefined) graceTimer = setTimeout(() => handlers.onConnection("reconnecting"), GRACE_MS);
 			if (source?.readyState !== EventSource.CLOSED || closed) return;
+			handlers.onRefused();
 			const delay = BACKOFF_MS[Math.min(failures, BACKOFF_MS.length - 1)];
 			failures += 1;
 			retryTimer = setTimeout(connect, delay);
