@@ -28,7 +28,8 @@ export function CardView({ card, variant = "lane" }: { card: Card; variant?: Car
 
 	return (
 		<article
-			className={`card court-${derived.court} card-${variant}${yours ? " is-yours" : ""}`}
+			className={`card court-${derived.court}${yours ? " is-yours" : ""}`}
+			data-variant={variant}
 			data-testid="card"
 			data-pr={ref}
 			data-state={derived.state}
@@ -53,7 +54,7 @@ export function CardView({ card, variant = "lane" }: { card: Card; variant?: Car
 				<span className="card-ref">{shortRef}</span>
 				<span className="card-author">
 					<Avatar person={card.author} size={16} alt={`Author ${card.author.login}`} />
-					<span>{card.author.login}</span>
+					<span className="card-author-name">{card.author.login}</span>
 				</span>
 				<ChecksBadge checks={card.checks} />
 			</div>

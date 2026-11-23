@@ -1,16 +1,43 @@
+# One pipeline for every change.
+#
+#   Pull request      test, check the chart, install it on a kind cluster, build the image for both
+#                     architectures. Nothing is published.
+#   Push to main      the same gates, then publish the image as :edge and the chart as 0.0.0-edge.
+#   Tag vX.Y.Z        the same gates, then publish the image as :X.Y.Z, :X.Y and :latest, publish the chart
+#                     as version X.Y.Z, and create a GitHub release.
+#
+# The release workflow (release.yml) creates the tag and starts this pipeline on it with workflow_dispatch,
+# because GitHub starts no workflow for a tag that another workflow pushed. A tag pushed by a person starts
+# it through the push trigger. Started by hand on a branch, the pipeline runs the gates and publishes nothing.
+#
+# docs/runbook.md explains how to cut a release and how to install what this publishes.
 name: ci
 on:
   pull_request:
   push:
     branches: [main]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  HELM_VERSION: v4.3.2
+  KUBECONFORM_VERSION: v0.8.0
+  KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
+  CHART: deploy/helm/pr-review-radar
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -21,8 +48,187 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: node scripts/verify-demo.mjs
+      - run: scripts/verify-release.sh
+
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Install kubeconform
+        run: |
+          curl -fsSL -o kubeconform.tar.gz "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  kubeconform.tar.gz" | sha256sum --check
+          sudo tar -xzf kubeconform.tar.gz -C /usr/local/bin kubeconform
+      - run: scripts/verify-chart.sh
+
+  # Installs the chart, with the image built from this commit, on a real cluster.
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the image for this machine
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          load: true
+          tags: pr-review-radar:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
+        with:
+          cluster_name: radar
+      - run: kind load docker-image pr-review-radar:ci --name radar
+      - name: Install in demo mode and run the chart's test
+        run: |
+          helm install demo "$CHART" --namespace demo --create-namespace \
+            --values "$CHART/ci/demo-values.yaml" \
+            --set image.repository=pr-review-radar --set image.tag=ci --set image.pullPolicy=Never \
+            --wait --timeout 3m
+          helm test demo --namespace demo --logs
+      - name: Install with GitHub App settings, then upgrade
+        run: |
+          # The credentials are placeholders. The server starts and serves /healthz before its first sweep,
+          # so the release becomes ready, and the sweep then fails in the log. The private key is a real
+          # key that no GitHub App knows, because the server parses it.
+          openssl genrsa -out private-key.pem 2048
+          install() {
+            helm upgrade --install real "$CHART" --namespace real --create-namespace \
+              --values "$CHART/ci/secret-values.yaml" --set-file github.privateKey=private-key.pem \
+              --set image.repository=pr-review-radar --set image.tag=ci --set image.pullPolicy=Never \
+              --wait --timeout 3m "$@"
+          }
+          session() { kubectl -n real get secret real-pr-review-radar-session -o jsonpath='{.data.RADAR_SESSION_SECRET}'; }
+          install
+          helm test real --namespace real --logs
+          before="$(session)"
+          install --set env.RADAR_TIME_ZONE=UTC
+          after="$(session)"
+          test -n "$before"
+          if [ "$before" != "$after" ]; then
+            echo "An upgrade replaced the session secret, which signs everyone out." >&2
+            exit 1
+          fi
+          echo "The session secret survived the upgrade."
+          kubectl -n real get pod -l app.kubernetes.io/name=pr-review-radar \
+            -o jsonpath='{.items[0].spec.containers[0].securityContext}{"\n"}'
+      - name: Show what happened
+        if: failure()
+        run: |
+          kubectl get pods,pvc,events --all-namespaces
+          kubectl -n demo logs deploy/demo-pr-review-radar --tail=50 || true
+          kubectl -n real logs deploy/real-pr-review-radar --tail=50 || true
+
+  # Proves on every pull request that the image builds for both architectures. Publishing reuses the cache.
   image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: docker build -f deploy/Dockerfile -t pr-review-radar:ci .
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+          cache-from: type=gha,scope=multiarch
+          cache-to: type=gha,mode=max,scope=multiarch
+
+  publish:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag')
+    needs: [test, chart, install, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Work out names and versions
+        id: names
+        run: |
+          repository="${GITHUB_REPOSITORY,,}"
+          echo "image=ghcr.io/${repository}" >> "$GITHUB_OUTPUT"
+          echo "charts=oci://ghcr.io/${repository%%/*}/charts" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::${GITHUB_REF_NAME} is not a release tag like v1.2.3."
+              exit 1
+            fi
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0-edge" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.names.outputs.image }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.names.outputs.version }},enable=${{ github.ref_type == 'tag' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.names.outputs.version }},enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=sha,format=short
+      - name: Build and push the image
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=multiarch
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Package and push the chart
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+          CHARTS: ${{ steps.names.outputs.charts }}
+          IMAGE: ${{ steps.names.outputs.image }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # A release chart defaults to the image with the same version. The edge chart defaults to :edge.
+          app_version="$VERSION"
+          [ "$GITHUB_REF_TYPE" = tag ] || app_version=edge
+          helm package "$CHART" --version "$VERSION" --app-version "$app_version" --destination dist
+          # The published chart must point at the image this run pushed, whatever the repository is called.
+          helm template check "dist/pr-review-radar-${VERSION}.tgz" --set demo=true | grep -F "image: \"${IMAGE}:${app_version}\""
+          echo "$REGISTRY_TOKEN" | helm registry login ghcr.io --username "$REGISTRY_USER" --password-stdin
+          helm push "dist/pr-review-radar-${VERSION}.tgz" "$CHARTS"
+      - name: Create the GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.names.outputs.version }}
+          CHARTS: ${{ steps.names.outputs.charts }}
+          IMAGE: ${{ steps.names.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "## Install"
+            echo
+            echo '```'
+            echo "helm upgrade --install radar ${CHARTS}/pr-review-radar --version ${VERSION} -f values.yaml"
+            echo '```'
+            echo
+            echo "Image: \`${IMAGE}:${VERSION}\` (\`${DIGEST}\`), for linux/amd64 and linux/arm64."
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" "dist/pr-review-radar-${VERSION}.tgz" \
+            --title "$GITHUB_REF_NAME" --notes-file notes.md --generate-notes --verify-tag

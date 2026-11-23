@@ -1,0 +1,19 @@
+{{- if .Values.demo }}
+PR Review Radar is running against a simulated organization.
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "radar.fullname" . }} 8080:80
+
+Then open http://localhost:8080 and pick a person.
+{{- else }}
+PR Review Radar is starting for the {{ .Values.org }} organization.
+
+  Board:            https://{{ .Values.host }}
+  OAuth callback:   https://{{ .Values.host }}/auth/callback
+  Webhook URL:      https://{{ default .Values.host .Values.webhookIngress.host }}/webhooks/github
+
+Set the callback and the webhook URL in the GitHub App's settings.
+{{- end }}
+
+Check the release with:
+
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}

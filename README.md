@@ -12,7 +12,7 @@ GitHub stays the review tool. Radar does not approve, comment, or merge.
 
 - [`docs/spike.md`](docs/spike.md) compares Radar with `github.com/pulls`, search qualifiers, and Slack reminders, and says what to turn on today whether or not you run Radar.
 - [`docs/design.md`](docs/design.md) explains the state rules, the architecture, and the answers to the open questions in the brief.
-- [`docs/runbook.md`](docs/runbook.md) covers the GitHub App, its permissions, configuration, and deployment to GKE.
+- [`docs/runbook.md`](docs/runbook.md) covers the GitHub App, its permissions, the Helm install, and how to cut a release.
 - [`docs/decisions.tsv`](docs/decisions.tsv) logs each decision made while building it, with the evidence.
 
 ## Try it in two minutes
@@ -34,8 +34,9 @@ Open `http://localhost:8080` and pick a person. The simulated organization has t
 | `packages/core` | The domain, with no dependencies and no I/O: `derive` turns one pull request snapshot into a state, a court, the people who need to act, and the reasons. Also card ordering, the Mine filter, the help-wanted rule, and the notification rules. |
 | `packages/server` | The GitHub App client, the webhook receiver, the reconcile sweep, the Server-Sent Events hub, sign-in, presence, and the simulated organization. |
 | `packages/web` | The React board. |
-| `deploy` | The Dockerfile, the Kubernetes manifests, and the GitHub App manifest. |
+| `deploy` | The Dockerfile, the Helm chart, and the GitHub App manifest. |
 | `scripts/verify-demo.mjs` | An end-to-end check that runs the real server and the built client in several browsers. |
+| `scripts/verify-chart.sh` | Lints the chart, renders three configurations, validates them against the Kubernetes schemas, and checks that bad values fail with a readable message. |
 
 The server and the domain run from TypeScript source with Node's type stripping. Only the web client has a build step.
 
@@ -46,6 +47,7 @@ npm run typecheck
 npm test
 npm run check:schema    # validates every GraphQL query against GitHub's public schema
 npm run verify:demo     # builds, then drives the real server and client in a browser
+npm run verify:chart    # lints and renders the Helm chart; needs helm and kubeconform
 ```
 
 `npm run verify:demo` needs Chromium for Playwright. Install it once with `npx playwright install chromium`.

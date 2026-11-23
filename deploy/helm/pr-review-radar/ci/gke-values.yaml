@@ -1,0 +1,23 @@
+org: acme
+host: radar.internal.example.com
+existingSecret: radar-github
+sessionSecret: 0123456789abcdef0123456789abcdef0123456789abcdef
+image:
+  tag: 1.2.3
+imagePullSecrets:
+  - name: ghcr
+ingress:
+  className: gce-internal
+  tlsSecretName: radar-internal-tls
+  annotations:
+    kubernetes.io/ingress.allow-http: "false"
+webhookIngress:
+  enabled: true
+  host: radar-hooks.example.com
+  className: gce
+gke:
+  backendConfig: true
+  managedCertificate: true
+persistence:
+  size: 2Gi
+  storageClass: standard-rwo

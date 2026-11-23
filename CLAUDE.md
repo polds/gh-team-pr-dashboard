@@ -14,7 +14,7 @@ A live, shared board of every open pull request in one GitHub organization, with
 - `packages/core` is the domain: snapshot types, `derive`, ordering, Mine, notification rules. It is pure and has no dependencies. Change state rules here, and update the tables in `docs/design.md` in the same commit.
 - `packages/server` is the GitHub App client, webhook receiver, reconcile sweep, SSE hub, auth, presence, and the demo source.
 - `packages/web` is the React board.
-- `deploy` holds the Dockerfile, the Kubernetes manifests, and the GitHub App manifest.
+- `deploy` holds the Dockerfile, the Helm chart in `deploy/helm/pr-review-radar`, and the GitHub App manifest. The chart is the only description of the Kubernetes resources. `.github/workflows/ci.yml` publishes the image and the chart to GHCR. To release, run the `release` workflow, which tags `main` and starts that pipeline on the tag.
 
 ## Commands
 
@@ -26,6 +26,7 @@ npm run check:schema  # validate every GraphQL query against GitHub's public sch
 npm run dev:demo    # server and web against the simulated source, no GitHub needed
 npm run build
 npm run verify:demo # build, then drive the real server and client in a browser
+npm run verify:chart # lint and render the Helm chart; needs helm and kubeconform
 ```
 
 Run `npm run verify:demo` before you call a change to the board, the pipeline, or the client done. Unit tests do not show that a change reaches every viewer.

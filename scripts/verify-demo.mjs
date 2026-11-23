@@ -89,6 +89,37 @@ async function appears(page, selector, timeout = 5000) {
 
 const HEARTBEAT_MS = 20_000;
 
+/** Opens the collapsed groups, sweeps the window width, and lists each card whose content crosses its border. */
+async function cardSpills(page) {
+	const original = page.viewportSize();
+	const setGroups = (open) => page.evaluate((value) => document.querySelectorAll("details").forEach((d) => (d.open = value)), open);
+	await setGroups(true);
+	const spills = new Set();
+	for (let width = 360; width <= 1920; width += 20) {
+		await page.setViewportSize({ width, height: 900 });
+		const found = await page.evaluate(() => {
+			const out = [];
+			for (const card of document.querySelectorAll('article[data-testid="card"]')) {
+				const box = card.getBoundingClientRect();
+				for (const el of card.querySelectorAll("*")) {
+					const r = el.getBoundingClientRect();
+					if (r.width === 0 || el.classList.contains("sr-only")) continue;
+					if (r.right > box.right + 0.5 || r.left < box.left - 0.5) {
+						const section = card.closest('[data-testid]:not([data-testid="card"])');
+						out.push(`${card.dataset.pr} in ${section ? section.dataset.testid : "?"} (.${el.className}, card ${Math.round(box.width)} px wide)`);
+						break;
+					}
+				}
+			}
+			return out;
+		});
+		for (const spill of found) spills.add(`${spill} at ${width} px`);
+	}
+	await setGroups(false);
+	if (original) await page.setViewportSize(original);
+	return [...spills];
+}
+
 async function enableNotifications(page) {
 	await page.click('[data-testid="notifications-button"]');
 	await page.click('[data-testid="notifications-toggle"]');
@@ -123,6 +154,9 @@ try {
 	if (shots) await ken.page.screenshot({ path: join(shots, "board-ken.png"), fullPage: true });
 
 	check("presence sends nothing while it is off", ken.presenceCalls.length === 0 && linus.presenceCalls.length === 0);
+
+	const spills = await cardSpills(ken.page);
+	check("no card content sticks out of its card at any window width from 360 to 1920 px", spills.length === 0, spills.slice(0, 3).join("; "));
 
 	const first = await step();
 	const kenSaw = await appears(ken.page, card("lane-likely_ready_for_rereview", "atum/mobile#77"));

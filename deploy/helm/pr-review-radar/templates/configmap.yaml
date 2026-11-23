@@ -1,0 +1,18 @@
+{{- include "radar.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "radar.fullname" . }}
+  labels:
+    {{- include "radar.labels" . | nindent 4 }}
+data:
+  {{- if .Values.demo }}
+  RADAR_DEMO: "1"
+  {{- else }}
+  RADAR_ORG: {{ .Values.org | quote }}
+  RADAR_BASE_URL: {{ printf "https://%s" .Values.host | quote }}
+  {{- end }}
+  RADAR_DATA_DIR: /data
+  {{- range $name, $value := .Values.env }}
+  {{ $name }}: {{ $value | toString | quote }}
+  {{- end }}

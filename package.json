@@ -15,7 +15,8 @@
 		"start": "node packages/server/src/main.ts",
 		"dev:demo": "RADAR_DEMO=1 node --watch packages/server/src/main.ts & npm run dev -w @radar/web",
 		"check:schema": "node packages/server/scripts/check-schema.ts",
-		"verify:demo": "npm run build && node scripts/verify-demo.mjs"
+		"verify:demo": "npm run build && node scripts/verify-demo.mjs",
+		"verify:chart": "scripts/verify-chart.sh"
 	},
 	"devDependencies": {
 		"@types/node": "^22.0.0",

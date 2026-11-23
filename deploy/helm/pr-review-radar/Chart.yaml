@@ -1,0 +1,11 @@
+apiVersion: v2
+name: pr-review-radar
+description: A live, shared board of every open pull request in one GitHub organization, with whose turn it is.
+type: application
+# The release workflow replaces both versions with the git tag. See docs/runbook.md.
+version: 0.1.0
+appVersion: edge
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/polds/gh-team-pr-dashboard
+sources:
+  - https://github.com/polds/gh-team-pr-dashboard

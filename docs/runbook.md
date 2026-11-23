@@ -44,9 +44,78 @@ The one-click re-request is optional. To use it, change **Pull requests** to **R
 
 Without that permission, the card's button stores the author's signal in Radar and links to the pull request on GitHub.
 
-## Configure
+## Install with Helm
 
-Non-secret settings are in `deploy/k8s/config.yaml`.
+The chart is `deploy/helm/pr-review-radar`. Each release publishes it to `oci://ghcr.io/polds/charts/pr-review-radar`, next to the image `ghcr.io/polds/gh-team-pr-dashboard`. See [Release](#release).
+
+### Try the chart with no GitHub App
+
+```
+helm install radar oci://ghcr.io/polds/charts/pr-review-radar --set demo=true --set ingress.enabled=false
+kubectl port-forward svc/radar-pr-review-radar 8080:80
+```
+
+Open `http://localhost:8080` and pick a person.
+
+### Install for your organization
+
+1. Write a values file. Two values are required.
+
+	```yaml
+	org: atum
+	host: radar.internal.example.com
+	```
+
+2. Install, and pass the GitHub App credentials on the command line so that they stay out of files.
+
+	```
+	helm upgrade --install radar oci://ghcr.io/polds/charts/pr-review-radar \
+		--namespace pr-review-radar --create-namespace \
+		--values values.yaml \
+		--set github.appId=123456 \
+		--set github.clientId=Iv1.example \
+		--set-file github.clientSecret=client-secret.txt \
+		--set-file github.privateKey=private-key.pem \
+		--set-file github.webhookSecret=webhook-secret.txt
+	```
+
+	The command prints the board URL, the OAuth callback URL, and the webhook URL. Set the last two in the GitHub App's settings.
+
+3. Run `helm test radar --namespace pr-review-radar`. The test asks the running board for `/healthz`.
+
+A render with a missing value fails and names every value that is missing.
+
+To keep the credentials in a Secret that you manage, create it with the five keys `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, and `GITHUB_WEBHOOK_SECRET`, and set `existingSecret` to its name. The chart then needs no `github` values.
+
+The chart generates the key that encrypts session cookies and keeps it across upgrades. Set `sessionSecret` yourself when a tool renders the chart without access to the cluster, such as Argo CD. Otherwise every sync signs everyone out.
+
+The Deployment runs one replica with the `Recreate` strategy, and the replica count is not a value. The board lives in the memory of one process.
+
+### Pull the image from a private registry
+
+A package that GitHub Actions publishes to GHCR starts out private. Either make the two packages visible to your cluster in the package settings on GitHub, or create a pull secret and name it.
+
+```
+kubectl -n pr-review-radar create secret docker-registry ghcr \
+	--docker-server=ghcr.io --docker-username=YOUR_LOGIN --docker-password=A_TOKEN_WITH_read:packages
+```
+
+```yaml
+imagePullSecrets:
+  - name: ghcr
+```
+
+A private chart needs `helm registry login ghcr.io` before `helm install`.
+
+### Settings
+
+`values.yaml` in the chart lists every value with a comment. Settings of the server itself go under `env`, and the server's default applies to anything you leave out.
+
+```yaml
+env:
+  RADAR_TIME_ZONE: America/Los_Angeles
+  RADAR_REREQUEST_ENABLED: true
+```
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -67,65 +136,90 @@ Non-secret settings are in `deploy/k8s/config.yaml`.
 | `RADAR_DEMO_INTERVAL_SECONDS` | `8` | Seconds between demo steps. `0` turns autoplay off. |
 | `PORT` | `8080` | Listen port. |
 
-Secrets go in a Kubernetes Secret named `radar-secrets`. Do not put them in git.
-
-| Key | Value |
-|---|---|
-| `GITHUB_APP_ID` | The app's numeric ID. |
-| `GITHUB_APP_CLIENT_ID` | The app's client ID. |
-| `GITHUB_APP_CLIENT_SECRET` | The client secret. |
-| `GITHUB_APP_PRIVATE_KEY` | The private key in PEM format. Or set `GITHUB_APP_PRIVATE_KEY_FILE` to the path of the PEM file. |
-| `GITHUB_WEBHOOK_SECRET` | The webhook secret. |
-| `RADAR_SESSION_SECRET` | Output of `openssl rand -hex 32`. It encrypts the session cookie. |
-
-```
-kubectl -n pr-review-radar create secret generic radar-secrets \
-	--from-literal=GITHUB_APP_ID=123456 \
-	--from-literal=GITHUB_APP_CLIENT_ID=Iv1.example \
-	--from-literal=GITHUB_APP_CLIENT_SECRET="$(cat client-secret.txt)" \
-	--from-file=GITHUB_APP_PRIVATE_KEY=private-key.pem \
-	--from-literal=GITHUB_WEBHOOK_SECRET="$(cat webhook-secret.txt)" \
-	--from-literal=RADAR_SESSION_SECRET="$(openssl rand -hex 32)"
-```
-
-## Deploy
-
-1. Build and push the image.
-
-	```
-	docker build -f deploy/Dockerfile -t REGION-docker.pkg.dev/PROJECT/REPOSITORY/pr-review-radar:TAG .
-	docker push REGION-docker.pkg.dev/PROJECT/REPOSITORY/pr-review-radar:TAG
-	```
-
-2. Set the image in `deploy/k8s/deployment.yaml` and the hosts in the two ingress files and in `config.yaml`.
-3. Create the namespace and the secret, then apply.
-
-	```
-	kubectl apply -f deploy/k8s/namespace.yaml
-	# create radar-secrets as shown above
-	kubectl apply -k deploy/k8s
-	```
-
-The Deployment runs one replica with the `Recreate` strategy. Do not raise the replica count. The board lives in the memory of one process.
+The chart sets `RADAR_ORG` from `org`, `RADAR_BASE_URL` from `host`, `RADAR_DEMO` from `demo`, and `RADAR_DATA_DIR` itself.
 
 ### TLS
 
-Both hosts must serve HTTPS. Sign-in fails over plain HTTP, because the browser does not send the `Secure` session cookie back.
+The board must be served over HTTPS. Sign-in fails over plain HTTP, because the browser does not send the `Secure` session cookie back.
 
-- The internal ingress reads its certificate from a Secret named `radar-internal-tls`. Create it from a certificate that your internal certificate authority issued for the board's host.
+- Set `ingress.tlsSecretName` to a TLS Secret for `host`, or leave it empty when your ingress controller or an annotation such as cert-manager's supplies the certificate.
+- The live board holds one long response open for each tab. Raise your ingress controller's read timeout to an hour. For ingress-nginx, set the annotation `nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"` under `ingress.annotations`.
 
-	```
-	kubectl -n pr-review-radar create secret tls radar-internal-tls --cert=radar.crt --key=radar.key
-	```
+### GKE
 
-	An internal HTTPS load balancer on GKE also needs a proxy-only subnet in the cluster's region.
-- The webhook ingress uses a Google-managed certificate for the webhook host. Point the host's DNS record at the ingress address. Google issues the certificate after the record resolves, which can take up to an hour.
+```yaml
+org: atum
+host: radar.internal.example.com
+ingress:
+  className: gce-internal
+  tlsSecretName: radar-internal-tls
+  annotations:
+    kubernetes.io/ingress.allow-http: "false"
+webhookIngress:
+  enabled: true
+  host: radar-hooks.example.com
+  className: gce
+gke:
+  backendConfig: true
+  managedCertificate: true
+```
+
+- `gke.backendConfig` raises the load balancer's backend timeout to an hour for the live board.
+- An internal HTTPS load balancer needs a proxy-only subnet in the cluster's region, and a certificate from your internal certificate authority in the `radar-internal-tls` Secret.
+- `gke.managedCertificate` issues a Google-managed certificate for the webhook host. Point the host's DNS record at the ingress address first. Google issues the certificate after the record resolves, which can take up to an hour.
 
 ### Webhook exposure
 
-GitHub must reach `/webhooks/github` from the internet. `deploy/k8s/ingress-webhook.yaml` exposes that one path. Attach a Cloud Armor policy that allows only the `hooks` address ranges from `https://api.github.com/meta`.
+GitHub must reach `/webhooks/github` from the internet. When the board itself is internal, set `webhookIngress.enabled` and `webhookIngress.host`. That second ingress exposes the one path and nothing else. Attach a policy that allows only the `hooks` address ranges from `https://api.github.com/meta`.
 
-If your network allows no inbound traffic from GitHub, remove `ingress-webhook.yaml` from `kustomization.yaml` and set `RADAR_RECONCILE_SECONDS` to `60`. The board then follows GitHub with a delay of up to a minute.
+If your network allows no inbound traffic from GitHub, leave `webhookIngress` off and set `env.RADAR_RECONCILE_SECONDS` to `60`. The board then follows GitHub with a delay of up to a minute.
+
+## Release
+
+One workflow, `.github/workflows/ci.yml`, tests, builds, and publishes. A second, `.github/workflows/release.yml`, creates the tag that starts a release.
+
+| Event | What it publishes |
+|---|---|
+| Pull request | Nothing. It runs the tests, checks the chart, installs the chart on a kind cluster with the image built from the commit, and builds the image for `linux/amd64` and `linux/arm64`. |
+| Push to `main` | The image as `:edge` and `:sha-<commit>`, and the chart as version `0.0.0-edge`. |
+| Tag `vX.Y.Z` | The image as `:X.Y.Z`, `:X.Y`, and `:latest`. The chart as version `X.Y.Z`, which installs image `:X.Y.Z` by default. A GitHub release with the chart attached. |
+
+Publishing runs only after every check passes.
+
+### Cut a release
+
+Run the `release` workflow on `main`. Open **Actions**, pick **release**, and choose **Run workflow**. Or use the command line.
+
+```
+gh workflow run release.yml -f bump=minor
+```
+
+| Input | Meaning |
+|---|---|
+| `bump` | `patch`, `minor`, or `major`. The workflow raises that part of the latest release. With no release yet, the latest release counts as `0.0.0`. |
+| `version` | An exact version such as `1.4.0`. It overrides `bump`. The workflow refuses a version that exists or that is older than the latest release. |
+| `dry_run` | Works out the version and stops. Nothing is tagged. |
+
+The workflow does three things.
+
+1. It checks that the pipeline passed on the current commit of `main`. If the run is red or still going, the workflow stops and tags nothing.
+2. It creates the tag `vX.Y.Z` on that commit.
+3. It starts the pipeline on the tag. The pipeline runs every gate again and then publishes.
+
+The workflow starts the pipeline itself because GitHub starts no workflow for a tag that another workflow pushed. It needs no personal token and no extra secret.
+
+If step 3 fails, the tag exists and nothing was published. Start the pipeline by hand with `gh workflow run ci.yml --ref vX.Y.Z`.
+
+You can still push a tag yourself. A tag that a person pushes starts the pipeline through its `push` trigger.
+
+```
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+To upgrade a cluster, run the install command again with `--version 1.0.0`.
+
+To check the chart on your machine, install `helm` and `kubeconform`, then run `npm run verify:chart`. To check the version rules, run `scripts/verify-release.sh`.
 
 ## Check that it works
 
@@ -143,7 +237,8 @@ If your network allows no inbound traffic from GitHub, remove `ingress-webhook.y
 | The board is empty after start | The first sweep is still running, or the app is not installed on any repository. Check the logs for `reconcile`. |
 | Cards update only every few minutes | Webhooks do not arrive. Check **Recent Deliveries** and the webhook ingress. |
 | Team requests do not show in Mine | The app lacks the organization Members permission, or an organization owner has not approved a permission change. |
-| The live connection drops every 30 seconds | The `BackendConfig` timeout is not applied to the Service. |
+| The live connection drops every 30 or 60 seconds | The ingress or load balancer cuts long responses. On GKE set `gke.backendConfig`. Elsewhere raise the controller's read timeout. See TLS above. |
+| The pod cannot pull the image | The GHCR package is private. See "Pull the image from a private registry". |
 | The re-request button reports that GitHub refused | The app lacks Pull requests write, or the author no longer has access to the repository. |
 
 ## When Radar is down
@@ -152,4 +247,6 @@ Each person can fall back to a saved view on `github.com/pulls` with the query `
 
 ## Rotate a secret
 
-Generate the new value in the GitHub App settings, update `radar-secrets`, and restart the Deployment with `kubectl -n pr-review-radar rollout restart deployment/radar`. A new `RADAR_SESSION_SECRET` signs everyone out.
+Generate the new value in the GitHub App settings, then run the install command again with the new value. The pod restarts by itself, because the chart stamps the pod with a checksum of the credentials. With `existingSecret`, update that Secret and run `kubectl -n pr-review-radar rollout restart deployment/radar-pr-review-radar`.
+
+To sign everyone out, set a new `sessionSecret`.

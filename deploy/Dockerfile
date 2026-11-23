@@ -1,4 +1,6 @@
-FROM node:22-slim AS build
+# The two build stages produce only JavaScript and static files, so they run once on the build machine's own
+# architecture. Only the last stage is built for each target platform.
+FROM --platform=$BUILDPLATFORM node:22-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/package.json
@@ -7,9 +9,9 @@ COPY packages/web/package.json packages/web/package.json
 RUN npm ci
 COPY tsconfig.base.json ./
 COPY packages ./packages
-RUN npm run build -w @radar/web
+RUN npm run build -w @radar/web && mkdir /data
 
-FROM node:22-slim AS deps
+FROM --platform=$BUILDPLATFORM node:22-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/package.json
@@ -27,7 +29,8 @@ COPY packages/core/src packages/core/src
 COPY packages/server/package.json packages/server/package.json
 COPY packages/server/src packages/server/src
 COPY --from=build /app/packages/web/dist packages/web/dist
-RUN mkdir /data && chown node:node /data
+# Copied, not created with RUN, so that the target-platform stage runs no command and needs no emulation.
+COPY --from=build --chown=node:node /data /data
 USER node
 EXPOSE 8080
 CMD ["node", "packages/server/src/main.ts"]
