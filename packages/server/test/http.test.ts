@@ -175,6 +175,47 @@ describe("HTTP app", () => {
 			expect(h.marks).toEqual([{ owner: "acme", name: "web", number: 1 }]);
 		});
 
+		const MIB = 1024 * 1024;
+
+		/** `chunks` MiB of zeros, pulled one MiB per read, counting what the app read. */
+		function zeros(chunks: number) {
+			const read = { bytes: 0 };
+			const stream = new ReadableStream<Uint8Array>(
+				{
+					pull(controller) {
+						if (read.bytes === chunks * MIB) return controller.close();
+						read.bytes += MIB;
+						controller.enqueue(new Uint8Array(MIB));
+					},
+				},
+				{ highWaterMark: 0 },
+			);
+			return { stream, read };
+		}
+
+		const unsigned = { "X-GitHub-Event": "ping", "X-Hub-Signature-256": `sha256=${"0".repeat(64)}` };
+
+		it("answers 413 to a Content-Length over GitHub's 25 MB cap without reading the body", async () => {
+			h = harness();
+			const { stream, read } = zeros(26);
+			const response = await h.app.request("/webhooks/github", {
+				method: "POST",
+				headers: { ...unsigned, "Content-Length": String(26 * MIB) },
+				body: stream,
+				duplex: "half",
+			});
+			expect(response.status).toBe(413);
+			expect(read.bytes).toBe(0);
+		});
+
+		it("answers 413 to a chunked body once it runs past GitHub's 25 MB cap, and stops reading it", async () => {
+			h = harness();
+			const { stream, read } = zeros(40);
+			const response = await h.app.request("/webhooks/github", { method: "POST", headers: unsigned, body: stream, duplex: "half" });
+			expect(response.status).toBe(413);
+			expect(read.bytes).toBe(26 * MIB);
+		});
+
 		it("resolves a status event through the head SHA index, and drops a denylisted repository", async () => {
 			h = harness();
 			const status = JSON.stringify({ repository: { name: "web", owner: { login: "acme" } }, sha: likelyReadyPr.headSha, state: "success" });

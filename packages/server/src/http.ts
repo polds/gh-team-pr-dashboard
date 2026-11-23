@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import { asPrId } from "@radar/core";
@@ -62,6 +63,9 @@ export type AppDeps = CommonDeps &
 type App = Hono<{ Variables: { session: Session } }>;
 
 const UNAUTHENTICATED = { error: "unauthenticated", loginUrl: "/auth/login" } as const;
+
+/** GitHub caps a webhook payload at 25 MB and does not deliver a larger one. */
+const WEBHOOK_MAX_BYTES = 25 * 1024 * 1024;
 
 const RESERVED_PREFIXES = ["/api", "/auth", "/webhooks", "/demo", "/healthz"];
 
@@ -245,6 +249,8 @@ export function createApp(deps: AppDeps): App {
 				return page(c, 502, "Sign-in failed", '<p>GitHub did not complete the sign-in. <a href="/auth/login">Try again</a>.</p>');
 			}
 		});
+
+		app.use("/webhooks/github", bodyLimit({ maxSize: WEBHOOK_MAX_BYTES, onError: (c) => c.json({ error: "payload_too_large" }, 413) }));
 
 		app.post("/webhooks/github", async (c) => {
 			const raw = new Uint8Array(await c.req.arrayBuffer());
