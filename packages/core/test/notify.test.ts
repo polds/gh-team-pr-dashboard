@@ -140,4 +140,27 @@ describe("notifierStep", () => {
 		expect(resolved).toEqual({ state: INITIAL_NOTIFIER_STATE, deliver: [] });
 		expect(step(resolved.state, tick, prefs, at(7)).deliver).toEqual([]);
 	});
+
+	it("drops a queued team turn at delivery when the user turned team requests off in the meantime", () => {
+		const digest: NotificationPrefs = { ...on, teamRequests: true, digestMinutes: 15 };
+		const queued = step(INITIAL_NOTIFIER_STATE, board([], [teamRequested(7)]), digest, at(10));
+		expect(queued.deliver).toEqual([]);
+		const due = step(queued.state, tick, { ...digest, teamRequests: false }, at(10, 15));
+		expect(due.deliver).toEqual([]);
+		expect(due.state.queue).toEqual([]);
+	});
+
+	it("drops a queued heuristic turn when quiet hours end after the user turned heuristic notifications off", () => {
+		const quiet: NotificationPrefs = { ...on, heuristic: true, quietHours: { startMinute: 22 * 60, endMinute: 8 * 60 } };
+		const queued = step(INITIAL_NOTIFIER_STATE, board([], [likelyReady(9)]), quiet, at(23));
+		expect(queued.deliver).toEqual([]);
+		const morning = step(queued.state, tick, { ...quiet, heuristic: false }, at(8));
+		expect(morning.deliver).toEqual([]);
+	});
+
+	it("still delivers a queued team turn at the digest when the user kept team requests on", () => {
+		const digest: NotificationPrefs = { ...on, teamRequests: true, digestMinutes: 15 };
+		const queued = step(INITIAL_NOTIFIER_STATE, board([], [teamRequested(7)]), digest, at(10));
+		expect(step(queued.state, tick, digest, at(10, 15)).deliver).toHaveLength(1);
+	});
 });

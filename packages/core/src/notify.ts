@@ -104,7 +104,7 @@ function isQuiet(quietHours: NotificationPrefs["quietHours"], minuteOfDay: numbe
 }
 
 function advance(queue: Turn[], input: NotifierInput, login: Login, prefs: NotificationPrefs): { queue: Turn[]; fresh: Turn[] } {
-	if (input.kind === "tick") return { queue, fresh: [] };
+	if (input.kind === "tick") return { queue: queue.filter((turn) => isWanted(turn, prefs)), fresh: [] };
 	const before = wantedTurns(login, input.before, prefs);
 	const after = wantedTurns(login, input.after, prefs);
 	const kept = queue.flatMap((queued) => {

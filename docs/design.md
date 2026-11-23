@@ -87,7 +87,7 @@ A decisive review is `APPROVED`, `CHANGES_REQUESTED`, or `DISMISSED`.
 
 A reviewer has feedback when the latest decisive review is `CHANGES_REQUESTED`, or when the reviewer started at least one review thread and has not approved. The second case matters because many reviewers leave comments and never click **Request changes**. GitHub's `reviewDecision` ignores that flow.
 
-A thread is addressed when it is resolved, or when the pull request author wrote its last comment. A thread that is unresolved and outdated counts as addressed only at reduced confidence.
+A thread is addressed when it is resolved, or when the pull request author wrote its last comment. A thread that is unresolved and outdated counts as addressed at reduced confidence, and only while nobody has commented on it since the head commit. A reviewer who replies on an outdated thread after the push reopens it.
 
 The feedback from one reviewer is addressed when both of these hold:
 
@@ -132,10 +132,11 @@ Merge blockers for rows 6 and 7:
 
 Each derived state carries a list of actors. An actor is a login, a role, and the route by which the pull request reached that person.
 
-- In an author court, the actor is the author.
+- In an author court, the actor is the author. A reviewer or a team with a pending review request stays an actor as well, so a request never drops out of that person's Mine because someone else requested changes first.
 - In a reviewer court, the actors are the reviewers whose status puts the ball with them.
 - A team request makes every member of the team an actor with the route `team`.
-- In a CI court, the list is empty.
+- In a CI court, the list holds only reviewers and teams with a pending request.
+- A draft asks nothing of reviewers. Its only actor is the author.
 
 Mine is this list filtered to the signed-in user. Mine has no data model of its own.
 

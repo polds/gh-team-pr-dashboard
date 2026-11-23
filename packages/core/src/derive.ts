@@ -171,10 +171,11 @@ function reviewerFactsOf(snapshot: PrSnapshot, signal: Signal): ReviewerFacts[] 
 	});
 }
 
-function threadState(thread: ReviewThread, author: Login): ThreadState {
+function threadState(thread: ReviewThread, snapshot: PrSnapshot): ThreadState {
 	if (thread.isResolved) return "resolved";
-	if (thread.lastCommentBy.login === author) return "answered";
-	return thread.isOutdated ? "outdated" : "open";
+	if (thread.lastCommentBy.login === snapshot.author.login) return "answered";
+	const quietSincePush = Date.parse(thread.lastCommentAt) <= Date.parse(snapshot.headCommittedAt);
+	return thread.isOutdated && quietSincePush ? "outdated" : "open";
 }
 
 function feedbackOf(r: Omit<ReviewerFacts, "feedback">, signal: Signal): Feedback | null {
@@ -183,7 +184,7 @@ function feedbackOf(r: Omit<ReviewerFacts, "feedback">, signal: Signal): Feedbac
 	const { snapshot } = r;
 	const author = snapshot.author.login;
 	const review = changeRequest ?? r.latest;
-	const states = r.threads.map((t) => threadState(t, author));
+	const states = r.threads.map((t) => threadState(t, snapshot));
 	const count = (state: ThreadState) => states.filter((s) => s === state).length;
 	const counts = { resolved: count("resolved"), answered: count("answered"), outdated: count("outdated"), open: count("open") };
 	const givenAt = latest(snapshot.createdAt, [review?.submittedAt, ...r.threads.map((t) => t.startedAt)]);
@@ -439,31 +440,44 @@ const STATE_REASONS: Record<PrState, (f: FoldFacts, o: Outcome) => Reason[]> = {
 	],
 };
 
+function reviewerActors(
+	reviewers: readonly Assessment[],
+	f: FoldFacts,
+	teams: ReadonlyMap<TeamSlug, readonly Login[]>,
+	since: IsoTime,
+): Actor[] {
+	const actors: Actor[] = reviewers.map((r) => ({
+		login: r.status.reviewer.login,
+		via: { kind: "direct", asCodeOwner: r.request?.asCodeOwner ?? false },
+		since: r.status.since,
+	}));
+	const listed = new Set<Login>([f.snapshot.author.login, ...actors.map((a) => a.login)]);
+	for (const request of f.snapshot.reviewRequests) {
+		if (request.kind !== "team") continue;
+		for (const login of teams.get(request.slug) ?? []) {
+			if (listed.has(login)) continue;
+			listed.add(login);
+			const via = { kind: "team", slug: request.slug, name: request.name, asCodeOwner: request.asCodeOwner } as const;
+			actors.push({ login, via, since: request.requestedAt ?? since });
+		}
+	}
+	return actors;
+}
+
 function actorsOf(court: Court, f: FoldFacts, teams: ReadonlyMap<TeamSlug, readonly Login[]>, since: IsoTime): Actor[] {
+	const { snapshot } = f;
+	if (snapshot.lifecycle.kind !== "open") return [];
+	const author: Actor = { login: snapshot.author.login, via: { kind: "author" }, since };
+	if (snapshot.isDraft) return [author];
+	const stillRequested = reviewerActors(withStatus(f.reviewers, "requested"), f, teams, since);
 	switch (court) {
 		case "author":
-			return [{ login: f.snapshot.author.login, via: { kind: "author" }, since }];
-		case "reviewers": {
-			const actors: Actor[] = holdingBall(f.reviewers).map((r) => ({
-				login: r.status.reviewer.login,
-				via: { kind: "direct", asCodeOwner: r.request?.asCodeOwner ?? false },
-				since: r.status.since,
-			}));
-			const listed = new Set<Login>([f.snapshot.author.login, ...actors.map((a) => a.login)]);
-			for (const request of f.snapshot.reviewRequests) {
-				if (request.kind !== "team") continue;
-				for (const login of teams.get(request.slug) ?? []) {
-					if (listed.has(login)) continue;
-					listed.add(login);
-					const via = { kind: "team", slug: request.slug, name: request.name, asCodeOwner: request.asCodeOwner } as const;
-					actors.push({ login, via, since: request.requestedAt ?? since });
-				}
-			}
-			return actors;
-		}
+			return [author, ...stillRequested];
+		case "reviewers":
+			return reviewerActors(holdingBall(f.reviewers), f, teams, since);
 		case "ci":
 		case "nobody":
-			return [];
+			return stillRequested;
 		default: {
 			const unhandled: never = court;
 			return unhandled;

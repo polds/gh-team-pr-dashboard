@@ -129,7 +129,7 @@ describe("fold table", () => {
 
 	it("row 4: GitHub reports a change request that the data does not include", () => {
 		const derived = deriveOf({ reviewDecision: "CHANGES_REQUESTED", reviewRequests: [requestOf(rex)] });
-		expect(derived).toMatchObject({ state: "changes_requested", court: "author", actors: [asAuthor(ana)] });
+		expect(derived).toMatchObject({ state: "changes_requested", court: "author", actors: [asAuthor(ana), direct(rex)] });
 	});
 
 	it("row 5: every change requester addressed the feedback or was re-requested", () => {
@@ -563,6 +563,46 @@ describe("author signals", () => {
 		const stale = derive(pr(addressed), context({ authorSignal: { kind: "not_ready", headSha: asSha("c1"), at: hour(5) } }));
 		expect(stale).toEqual(deriveOf(addressed));
 		expect(stale.state).toBe("likely_ready_for_rereview");
+	});
+});
+
+describe("pending requests in an author court", () => {
+	it("keeps a reviewer with a pending request as an actor while another reviewer's change request waits on the author", () => {
+		const snapshot = pr({
+			reviewDecision: "CHANGES_REQUESTED",
+			reviewRequests: [requestOf(rex, { requestedAt: hour(1) }), teamRequestOf("web", { requestedAt: hour(1) })],
+			...reviews(review(cora, "CHANGES_REQUESTED", hour(2), "c1")),
+		});
+		const derived = derive(snapshot, context({ teams: new Map([[asTeamSlug("web"), [human("tess").login, ana.login]]]) }));
+		expect(derived).toMatchObject({ state: "changes_requested", court: "author" });
+		expect(derived.actors).toEqual([asAuthor(ana, hour(2)), direct(rex, hour(1)), viaTeam(human("tess"), "web", hour(1))]);
+	});
+
+	it("asks nothing of requested reviewers while the pull request is a draft", () => {
+		const derived = deriveOf({ isDraft: true, reviewRequests: [requestOf(rex, { requestedAt: hour(1) })] });
+		expect(derived.actors).toEqual([asAuthor(ana, hour(0))]);
+	});
+});
+
+describe("outdated threads", () => {
+	const pushedAfterReview: Partial<PrSnapshot> = {
+		reviewDecision: "CHANGES_REQUESTED",
+		headSha: asSha("c2"),
+		headCommittedAt: hour(3),
+		...reviews(review(rex, "CHANGES_REQUESTED", hour(2), "c1")),
+	};
+
+	it("counts an outdated thread as addressed when nobody spoke after the push", () => {
+		const derived = deriveOf({ ...pushedAfterReview, threads: [thread(rex, { startedAt: hour(2), isOutdated: true })] });
+		expect(derived).toMatchObject({ state: "likely_ready_for_rereview", confidence: "medium" });
+	});
+
+	it("keeps the ball with the author when the reviewer replies on an outdated thread after the push", () => {
+		const derived = deriveOf({
+			...pushedAfterReview,
+			threads: [thread(rex, { startedAt: hour(2), isOutdated: true, lastCommentBy: rex, lastCommentAt: hour(4) })],
+		});
+		expect(derived).toMatchObject({ state: "changes_requested", court: "author" });
 	});
 });
 
