@@ -216,6 +216,7 @@ export function createApp(deps: AppDeps): App {
 		const { github } = deps;
 		const { clientId, clientSecret, webhookSecret } = deps.config.github;
 		const denied = new Set(config.repoDenylist.map((name) => name.toLowerCase()));
+		const org = config.org.toLowerCase();
 
 		app.get("/auth/login", (c) => {
 			const state = randomBytes(16).toString("base64url");
@@ -262,7 +263,7 @@ export function createApp(deps: AppDeps): App {
 				return c.json({ error: "bad_json" }, 400);
 			}
 			const refs = hintsFromEvent(c.req.header("x-github-event") ?? "", payload)
-				.filter((hint) => !denied.has(hint.name.toLowerCase()))
+				.filter((hint) => hint.owner.toLowerCase() === org && !denied.has(hint.name.toLowerCase()))
 				.flatMap((hint): PrRef[] =>
 					hint.kind === "pr" ? [{ owner: hint.owner, name: hint.name, number: hint.number }] : board.refsForSha(hint, hint.sha),
 				);

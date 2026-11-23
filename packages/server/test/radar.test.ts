@@ -56,9 +56,9 @@ describe("GitHub mode wiring", () => {
 		rmSync(dataDir, { recursive: true, force: true });
 	});
 
-	it("sweeps, serves the board, refreshes on a signed webhook, and writes the state file on stop, with no secret in the log", async () => {
+	function githubConfig() {
 		const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-		const config = loadConfig({
+		return loadConfig({
 			RADAR_ORG: "acme",
 			RADAR_BASE_URL: "https://radar.test",
 			RADAR_SESSION_SECRET: SESSION_SECRET,
@@ -70,6 +70,19 @@ describe("GitHub mode wiring", () => {
 			GITHUB_WEBHOOK_SECRET: WEBHOOK_SECRET,
 			GITHUB_INSTALLATION_ID: "9",
 		});
+	}
+
+	const cookieFor = (login: string) =>
+		`${SESSION_COOKIE}=${createSessionCodec(SESSION_SECRET).seal({ login: asLogin(login), avatarUrl: "", name: null, userToken: `ghu_${login}`, expiresAt: Date.now() + 60_000 })}`;
+
+	const deliver = (event: string, payload: unknown) => {
+		const body = JSON.stringify(payload);
+		const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex")}`;
+		return radar.app.request("/webhooks/github", { method: "POST", headers: { "X-GitHub-Event": event, "X-Hub-Signature-256": signature }, body });
+	};
+
+	it("sweeps, serves the board, refreshes on a signed webhook, and writes the state file on stop, with no secret in the log", async () => {
+		const config = githubConfig();
 		const github = fakeGitHub();
 		const logger = recordingLogger();
 		radar = createRadar({ config, clock: systemClock, log: logger.log, fetch: github.fetch });
@@ -78,15 +91,13 @@ describe("GitHub mode wiring", () => {
 		const health = await jsonOf<{ ok: boolean; lastSweepAt: string | null }>(await radar.app.request("/healthz"));
 		expect(health).toEqual({ ok: true, lastSweepAt: "2026-11-05T10:00:00.000Z" });
 
-		const cookie = `${SESSION_COOKIE}=${createSessionCodec(SESSION_SECRET).seal({ login: asLogin("alice"), avatarUrl: "", name: null, userToken: "ghu_alice", expiresAt: Date.now() + 60_000 })}`;
+		const cookie = cookieFor("alice");
 		const board = await jsonOf<BoardResponse>(await radar.app.request("/api/board", { headers: { Cookie: cookie } }));
 		expect(board.cards.map((card) => `${card.repo}#${card.number}`)).toEqual(["acme/api#42"]);
 		expect(board.config).toMatchObject({ org: "acme", demo: false, rerequestEnabled: false });
 
 		const fetchesBefore = github.requests.filter((request) => request.body.includes("query PullRequests")).length;
-		const body = JSON.stringify({ action: "synchronize", repository: { name: "api", owner: { login: "acme" } }, pull_request: { number: 42 } });
-		const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex")}`;
-		const hook = await radar.app.request("/webhooks/github", { method: "POST", headers: { "X-GitHub-Event": "pull_request", "X-Hub-Signature-256": signature }, body });
+		const hook = await deliver("pull_request", { action: "synchronize", repository: { name: "api", owner: { login: "acme" } }, pull_request: { number: 42 } });
 		expect(hook.status).toBe(202);
 		await vi.advanceTimersByTimeAsync(1500);
 		expect(github.requests.filter((request) => request.body.includes("query PullRequests")).length).toBe(fetchesBefore + 1);
@@ -99,5 +110,16 @@ describe("GitHub mode wiring", () => {
 		for (const secret of [INSTALLATION_TOKEN, CLIENT_SECRET, WEBHOOK_SECRET, SESSION_SECRET, "PRIVATE KEY", "ghu_alice"]) {
 			expect(logged).not.toContain(secret);
 		}
+	});
+
+	it("keeps a pull request from a repository outside the organization off the board after a signed webhook and a sweep", async () => {
+		radar = createRadar({ config: githubConfig(), clock: systemClock, log: recordingLogger().log, fetch: fakeGitHub().fetch });
+		await radar.reconciler.sweep();
+		await deliver("pull_request", { action: "opened", repository: { name: "anything", owner: { login: "someone-else" } }, pull_request: { number: 7 } });
+		await vi.advanceTimersByTimeAsync(1500);
+		await radar.reconciler.sweep();
+		const board = await jsonOf<BoardResponse>(await radar.app.request("/api/board", { headers: { Cookie: cookieFor("alice") } }));
+		radar.stop();
+		expect(board.cards.map((card) => `${card.repo}#${card.number}`)).toEqual(["acme/api#42"]);
 	});
 });

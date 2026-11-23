@@ -10,6 +10,9 @@ function avatar(login: string, color: string): string {
 
 const human = (login: string, color: string): Person => ({ login: asLogin(login), avatarUrl: avatar(login, color), isBot: false });
 
+/** The organization the demo simulates. Its pull requests live in this owner's repositories. */
+export const DEMO_ORG = "atum";
+
 export const ada = human("ada", "#7c3aed");
 export const grace = human("grace", "#0891b2");
 export const linus = human("linus", "#ca8a04");
@@ -84,10 +87,10 @@ interface PrFacts extends Partial<Omit<PrSnapshot, "repo">> {
 
 function pr({ repo, number, head, ...facts }: PrFacts): PrSnapshot {
 	return {
-		id: asPrId(`PR_atum_${repo}_${number}`),
-		repo: { owner: "atum", name: repo },
+		id: asPrId(`PR_${DEMO_ORG}_${repo}_${number}`),
+		repo: { owner: DEMO_ORG, name: repo },
 		number,
-		url: `https://github.com/atum/${repo}/pull/${number}`,
+		url: `https://github.com/${DEMO_ORG}/${repo}/pull/${number}`,
 		lifecycle: { kind: "open" },
 		isDraft: false,
 		readyAt: null,
@@ -298,8 +301,8 @@ function existing(before: PrSnapshot | undefined): PrSnapshot {
 	return before;
 }
 
-const monorepo = (number: number): PrRef => ({ owner: "atum", name: "monorepo", number });
-const mobile = (number: number): PrRef => ({ owner: "atum", name: "mobile", number });
+const monorepo = (number: number): PrRef => ({ owner: DEMO_ORG, name: "monorepo", number });
+const mobile = (number: number): PrRef => ({ owner: DEMO_ORG, name: "mobile", number });
 
 export const SCRIPT: readonly ScriptStep[] = [
 	{

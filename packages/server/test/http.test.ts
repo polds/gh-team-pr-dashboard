@@ -64,7 +64,7 @@ function harness({
 }: { prs?: PrSnapshot[]; config?: Partial<GitHubConfig>; fetch?: typeof globalThis.fetch; refuse?: boolean } = {}) {
 	const webDist = mkdtempSync(join(tmpdir(), "radar-web-"));
 	const store = createStore({ file: null, clock: systemClock, log: recordingLogger().log });
-	const board = createBoard({ store, cardConfig: CARD_CONFIG });
+	const board = createBoard({ org: "acme", store, cardConfig: CARD_CONFIG });
 	for (const pr of prs) board.apply(refOf(pr), pr, NOW);
 	const hub = createHub({ clock: systemClock });
 	const presence = createPresence({ clock: systemClock, onChange: (list) => hub.broadcast({ kind: "presence", presence: list }) });
@@ -223,6 +223,19 @@ describe("HTTP app", () => {
 			const denied = JSON.stringify({ repository: { name: "Sandbox", owner: { login: "acme" } }, pull_request: { number: 9 } });
 			await h.app.request("/webhooks/github", { method: "POST", headers: { "X-GitHub-Event": "pull_request", "X-Hub-Signature-256": sign(denied) }, body: denied });
 			expect(h.marks).toEqual([refOf(likelyReadyPr)]);
+		});
+
+		it("drops a hint for a repository outside the organization, and reads the owner without case", async () => {
+			h = harness();
+			const deliver = (event: string, payload: unknown) => {
+				const raw = JSON.stringify(payload);
+				return h.app.request("/webhooks/github", { method: "POST", headers: { "X-GitHub-Event": event, "X-Hub-Signature-256": sign(raw) }, body: raw });
+			};
+			const foreign = { name: "web", owner: { login: "someone-else" } };
+			expect(await jsonOf(await deliver("pull_request", { repository: foreign, pull_request: { number: 7 } }))).toEqual({ marked: 0 });
+			expect(await jsonOf(await deliver("status", { repository: foreign, sha: likelyReadyPr.headSha }))).toEqual({ marked: 0 });
+			await deliver("pull_request", { repository: { name: "web", owner: { login: "ACME" } }, pull_request: { number: 3 } });
+			expect(h.marks).toEqual([{ owner: "ACME", name: "web", number: 3 }]);
 		});
 	});
 

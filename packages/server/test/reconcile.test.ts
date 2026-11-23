@@ -13,7 +13,7 @@ const CARD_CONFIG: CardConfig = { priorityLabels: [], helpWantedAfterBusinessHou
 
 function setup(prs: PrSnapshot[], fullSweepEvery = 12) {
 	const github = memorySource(prs);
-	const board = createBoard({ store: createStore({ file: null, clock: systemClock, log: silentLogger }), cardConfig: CARD_CONFIG });
+	const board = createBoard({ org: "acme", store: createStore({ file: null, clock: systemClock, log: silentLogger }), cardConfig: CARD_CONFIG });
 	const events: ServerEvent[] = [];
 	const publish = (batch: ServerEvent[]) => events.push(...batch);
 	const refresher = createRefresher({

@@ -38,6 +38,10 @@ describe("loadConfig", () => {
 		expect(config.sessionSecret).toHaveLength(64);
 	});
 
+	it("runs the demo against its simulated organization whatever RADAR_ORG says, since the board holds only that organization's pull requests", () => {
+		expect(loadConfig({ RADAR_DEMO: "1", RADAR_ORG: "acme" }, noFile).org).toBe("atum");
+	});
+
 	it("reads GitHub mode and strips the trailing slash from the base URL", () => {
 		const config = loadConfig({ ...GITHUB_ENV, RADAR_REPO_DENYLIST: "sandbox, scratch", GITHUB_INSTALLATION_ID: "42" }, noFile);
 		expect(config.mode).toBe("github");

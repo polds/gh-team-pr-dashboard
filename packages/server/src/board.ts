@@ -65,7 +65,9 @@ function reviewsOf(snapshot: PrSnapshot): Review[] {
 	return [...snapshot.decisiveReviews, ...snapshot.latestReviews];
 }
 
-export function createBoard({ store, cardConfig }: { store: Store; cardConfig: CardConfig }): Board {
+/** `org` is the organization login. A pull request from a repository another account owns never enters the board. */
+export function createBoard({ org, store, cardConfig }: { org: string; store: Store; cardConfig: CardConfig }): Board {
+	const orgLogin = org.toLowerCase();
 	const entries = new Map<PrId, Entry>();
 	const history = emptyHistory();
 	const people = new Map<Login, Person>();
@@ -129,6 +131,7 @@ export function createBoard({ store, cardConfig }: { store: Store; cardConfig: C
 			const held = [...entries.values()].find((entry) => refKey(entry.ref) === key);
 			return held === undefined ? [] : remove(held.snapshot.id);
 		}
+		if (snapshot.repo.owner.toLowerCase() !== orgLogin) return [];
 		const { id } = snapshot;
 		const held = entries.get(id);
 		const ended = snapshot.lifecycle.kind !== "open";

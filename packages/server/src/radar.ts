@@ -67,6 +67,7 @@ function modeOf(config: Config, deps: { clock: Clock; log: Logger; fetch: Fetch;
 export function createRadar({ config, clock, log, fetch = globalThis.fetch }: { config: Config; clock: Clock; log: Logger; fetch?: Fetch }): Radar {
 	const store = createStore({ file: config.mode === "demo" ? null : join(config.dataDir, "state.json"), clock, log });
 	const board = createBoard({
+		org: config.org,
 		store,
 		cardConfig: {
 			priorityLabels: config.priorityLabels,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asSha, asTeamSlug } from "@radar/core";
+import { asPrId, asSha, asTeamSlug } from "@radar/core";
 import type { CardConfig, PrSnapshot, ServerEvent } from "@radar/core";
 import { createBoard } from "../src/board.ts";
 import { systemClock } from "../src/clock.ts";
@@ -18,7 +18,7 @@ const CARD_CONFIG: CardConfig = {
 const at = (n: number) => new Date(hour(n));
 
 const memoryStore = () => createStore({ file: null, clock: systemClock, log: silentLogger });
-const newBoard = (store: Store = memoryStore()) => createBoard({ store, cardConfig: CARD_CONFIG });
+const newBoard = (store: Store = memoryStore()) => createBoard({ org: "acme", store, cardConfig: CARD_CONFIG });
 
 const kinds = (events: ServerEvent[]) => events.map((event) => event.kind);
 const cardOf = (events: ServerEvent[]) => {
@@ -89,6 +89,16 @@ describe("board", () => {
 	it("ignores a merged pull request it never held", () => {
 		const board = newBoard();
 		expect(board.apply(refOf(approved), { ...approved, lifecycle: { kind: "merged", at: hour(1) } }, at(1))).toEqual([]);
+	});
+
+	it("never holds a pull request from a repository outside the organization, and reads the owner without case", () => {
+		const board = newBoard();
+		const foreign = snapshot({ id: asPrId("PR_foreign"), repo: { owner: "someone-else", name: "anything" }, number: 7 });
+		expect(board.apply(refOf(foreign), foreign, at(1))).toEqual([]);
+		const shouted = snapshot({ repo: { owner: "ACME", name: "web" } });
+		expect(kinds(board.apply(refOf(shouted), shouted, at(1)))).toEqual(["card"]);
+		expect(board.cards().map((card) => card.id)).toEqual([shouted.id]);
+		expect(board.openRefs()).toEqual([refOf(shouted)]);
 	});
 
 	it("celebrates a review that moves a pull request out of the reviewers' court", () => {

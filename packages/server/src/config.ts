@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { DEMO_ORG } from "./demo/scenario.ts";
 
 interface BaseConfig {
 	port: number;
@@ -103,7 +104,6 @@ const githubSchema = commonSchema.extend({
 });
 
 const demoSchema = commonSchema.extend({
-	RADAR_ORG: z.string().default("atum"),
 	RADAR_BASE_URL: baseUrl.optional(),
 	RADAR_SESSION_SECRET: sessionSecret.optional(),
 	RADAR_REREQUEST_ENABLED: flag.prefault("true"),
@@ -163,7 +163,7 @@ export function loadConfig(
 		return {
 			mode: "demo",
 			...common(demo),
-			org: demo.RADAR_ORG,
+			org: DEMO_ORG,
 			baseUrl: demo.RADAR_BASE_URL ?? `http://localhost:${demo.PORT}`,
 			sessionSecret: demo.RADAR_SESSION_SECRET ?? randomBytes(32).toString("hex"),
 			rerequestEnabled: demo.RADAR_REREQUEST_ENABLED,
