@@ -16,3 +16,8 @@ export function iso(value: string): IsoTime {
 	if (!isIsoTime(value)) throw new Error(`not a time: ${value}`);
 	return value;
 }
+
+/** Reads one of the app's own JSON responses as the protocol type the app built it from. Tests assert on the fields, so a wrong shape fails there. */
+export async function jsonOf<T>(response: Response): Promise<T> {
+	return (await response.json()) as T;
+}

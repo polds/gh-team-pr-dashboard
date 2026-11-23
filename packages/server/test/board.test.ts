@@ -6,7 +6,7 @@ import { systemClock } from "../src/clock.ts";
 import { silentLogger } from "../src/log.ts";
 import { createStore } from "../src/store.ts";
 import type { Store } from "../src/store.ts";
-import { hour, person, refOf, review, snapshot } from "./builders.ts";
+import { approvedPr, bob, changesRequestedPr, hour, likelyReadyPr, person, refOf, requestedPr, snapshot } from "./builders.ts";
 
 const CARD_CONFIG: CardConfig = {
 	priorityLabels: ["hotfix"],
@@ -15,7 +15,6 @@ const CARD_CONFIG: CardConfig = {
 	botLogins: ["renovate"],
 };
 
-const bob = person("bob");
 const at = (n: number) => new Date(hour(n));
 
 const memoryStore = () => createStore({ file: null, clock: systemClock, log: silentLogger });
@@ -28,18 +27,10 @@ const cardOf = (events: ServerEvent[]) => {
 	return event.card;
 };
 
-const requested = snapshot({ reviewRequests: [{ kind: "user", reviewer: bob, asCodeOwner: false, requestedAt: hour(0) }] });
-const changesRequested = snapshot({
-	reviewDecision: "CHANGES_REQUESTED",
-	...{ decisiveReviews: [review(bob, "CHANGES_REQUESTED", hour(2))], latestReviews: [review(bob, "CHANGES_REQUESTED", hour(2))] },
-});
-const likelyReady: PrSnapshot = { ...changesRequested, headSha: asSha("c2"), headCommittedAt: hour(3) };
-const approved: PrSnapshot = {
-	...likelyReady,
-	reviewDecision: "APPROVED",
-	decisiveReviews: [review(bob, "APPROVED", hour(4), "c2")],
-	latestReviews: [review(bob, "APPROVED", hour(4), "c2")],
-};
+const requested = requestedPr;
+const changesRequested = changesRequestedPr;
+const likelyReady = likelyReadyPr;
+const approved = approvedPr;
 
 describe("board", () => {
 	it("emits a card on the first apply and nothing for an identical one", () => {

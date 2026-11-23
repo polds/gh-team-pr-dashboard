@@ -108,3 +108,20 @@ export function memorySource(initial: PrSnapshot[] = [], teams: TeamInfo[] = [])
 		},
 	};
 }
+
+export const bob = person("bob");
+
+/** Ana's pull request through one review round with bob. */
+export const requestedPr = snapshot({ reviewRequests: [{ kind: "user", reviewer: bob, asCodeOwner: false, requestedAt: hour(0) }] });
+export const changesRequestedPr = snapshot({
+	reviewDecision: "CHANGES_REQUESTED",
+	decisiveReviews: [review(bob, "CHANGES_REQUESTED", hour(2))],
+	latestReviews: [review(bob, "CHANGES_REQUESTED", hour(2))],
+});
+export const likelyReadyPr: PrSnapshot = { ...changesRequestedPr, headSha: asSha("c2"), headCommittedAt: hour(3) };
+export const approvedPr: PrSnapshot = {
+	...likelyReadyPr,
+	reviewDecision: "APPROVED",
+	decisiveReviews: [review(bob, "APPROVED", hour(4), "c2")],
+	latestReviews: [review(bob, "APPROVED", hour(4), "c2")],
+};
