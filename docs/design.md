@@ -81,7 +81,7 @@ Radar first gives each human reviewer one status. A reviewer is anyone with a pe
 | `approved` | The reviewer's latest decisive review is `APPROVED`. | Nobody |
 | `feedback_outstanding` | The reviewer has feedback that the author has not addressed. See below. | Author |
 | `feedback_addressed` | The reviewer gave feedback, and the heuristic says that the author addressed it. | Reviewer |
-| `commented` | The reviewer left a comment-only review and has no open thread. | Reviewer |
+| `commented` | The reviewer left a comment-only review and started no thread. | Reviewer |
 
 A decisive review is `APPROVED`, `CHANGES_REQUESTED`, or `DISMISSED`.
 
@@ -103,7 +103,7 @@ The first matching row wins.
 | 1 | Merged | `merged` | Nobody |
 | 2 | Closed without merge | `closed` | Nobody |
 | 3 | Draft | `draft` | Author |
-| 4 | Any reviewer has a `CHANGES_REQUESTED` review that is `feedback_outstanding` | `changes_requested` | Author |
+| 4 | Any reviewer has a `CHANGES_REQUESTED` review that is `feedback_outstanding`, or `reviewDecision` is `CHANGES_REQUESTED` and no reviewer's change request is in the data | `changes_requested` | Author |
 | 5 | Row 4 does not match, `reviewDecision` is `CHANGES_REQUESTED`, and every such reviewer is `feedback_addressed` or `requested` | `likely_ready_for_rereview` if any is `feedback_addressed`, otherwise `in_review` | Reviewers |
 | 6 | The pull request is approved and has no merge blocker | `ready_to_merge` | Author, or CI when the pull request is in the merge queue |
 | 7 | The pull request is approved and has a merge blocker | `approved_blocked` | From the blocker table |
@@ -115,7 +115,7 @@ The first matching row wins.
 
 A pull request is approved when `reviewDecision` is `APPROVED`. When the base branch requires no review, `reviewDecision` is null, and one approval with no outstanding feedback counts as approved.
 
-Row 8 covers a dismissed approval and a second required approval that is still missing.
+Row 8 covers a dismissed approval and a second required approval that is still missing. Its blocker is `approval_dismissed` when a reviewer's approval was dismissed, and `review_missing` otherwise.
 
 Merge blockers for rows 6 and 7:
 
@@ -124,8 +124,8 @@ Merge blockers for rows 6 and 7:
 | `conflicts` | `mergeable` is `CONFLICTING` | Author |
 | `ci_failing` | A required check failed. When Radar cannot tell which checks are required, any failed check counts. | Author |
 | `behind` | `mergeStateStatus` is `BEHIND` | Author |
-| `threads_unresolved` | `mergeStateStatus` is `BLOCKED`, no other blocker explains it, and unresolved threads exist | Author |
-| `blocked_other` | `mergeStateStatus` is `BLOCKED` and nothing above explains it | Author |
+| `threads_unresolved` | `mergeStateStatus` is `BLOCKED`, no other blocker or running required check explains it, and unresolved threads exist | Author |
+| `blocked_other` | `mergeStateStatus` is `BLOCKED` and neither a blocker above nor a running required check explains it | Author |
 | `ci_pending` | A required check is still running, and no other blocker exists | CI |
 
 ### Who needs to act
