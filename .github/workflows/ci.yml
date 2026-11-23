@@ -211,7 +211,9 @@ jobs:
           # The published chart must point at the image this run pushed, whatever the repository is called.
           helm template check "dist/pr-review-radar-${VERSION}.tgz" --set demo=true | grep -F "image: \"${IMAGE}:${app_version}\""
           echo "$REGISTRY_TOKEN" | helm registry login ghcr.io --username "$REGISTRY_USER" --password-stdin
-          helm push "dist/pr-review-radar-${VERSION}.tgz" "$CHARTS"
+          # GHCR can fail a push on the read that follows its own write. The script retries and then pulls
+          # the tag back to prove it is there.
+          scripts/push-chart.sh "dist/pr-review-radar-${VERSION}.tgz" "$CHARTS"
       - name: Create the GitHub release
         if: github.ref_type == 'tag'
         env:
