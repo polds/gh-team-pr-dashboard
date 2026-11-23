@@ -70,8 +70,7 @@ export type Lifecycle =
 
 /**
  * One pull request as GitHub describes it at one moment. Every field comes
- * from GitHub. The server parses the GraphQL response into this shape at the
- * boundary, and nothing downstream reads a GitHub payload.
+ * from GitHub.
  */
 export interface PrSnapshot {
 	id: PrId;
@@ -162,7 +161,7 @@ export type Blocker =
 
 export type Confidence = "high" | "medium" | "confirmed";
 
-/** Why a pull request is in its state. The web client renders each reason as one sentence. */
+/** Why a pull request is in its state. */
 export type Reason =
 	| { kind: "draft" }
 	| { kind: "no_reviewer_requested" }

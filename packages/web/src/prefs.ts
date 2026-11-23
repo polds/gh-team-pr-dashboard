@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
 import { DEFAULT_NOTIFICATION_PREFS } from "@radar/core";
 import type { NotificationPrefs } from "@radar/core";
 
-/** The part of `Storage` that prefs need, so tests can pass a fake that throws. */
 export interface PrefsStorage {
 	getItem(key: string): string | null;
 	setItem(key: string, value: string): void;

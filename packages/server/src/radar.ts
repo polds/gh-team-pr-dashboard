@@ -64,7 +64,6 @@ function modeOf(config: Config, deps: { clock: Clock; log: Logger; fetch: Fetch;
 	}
 }
 
-/** Wires every piece from the configuration. The process entry point only adds the listener and the signal handlers. */
 export function createRadar({ config, clock, log, fetch = globalThis.fetch }: { config: Config; clock: Clock; log: Logger; fetch?: Fetch }): Radar {
 	const store = createStore({ file: config.mode === "demo" ? null : join(config.dataDir, "state.json"), clock, log });
 	const board = createBoard({

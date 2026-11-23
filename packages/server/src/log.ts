@@ -8,7 +8,6 @@ export interface Logger {
 	error(event: string, fields?: LogFields): void;
 }
 
-/** One JSON object per line. Callers pass only the fields they mean to publish, so no header, token, or cookie reaches the log. */
 export function createLogger(write: (line: string) => void = (line) => process.stdout.write(line)): Logger {
 	const emit = (level: LogLevel) => (event: string, fields: LogFields = {}) =>
 		write(`${JSON.stringify({ time: new Date().toISOString(), level, event, ...fields })}\n`);

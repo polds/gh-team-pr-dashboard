@@ -16,17 +16,11 @@ export interface Demo {
 	advance(): DemoStep;
 }
 
-/**
- * A simulated GitHub organization. It answers as a `PullRequestSource` and a
- * `ReviewRequester`, so demo mode runs the real refresher, board, hub, and
- * HTTP code. Every change ends with a hint, as a webhook would.
- */
 export function createDemo({ clock, hint }: { clock: Clock; hint: (ref: PrRef) => void }): Demo {
 	const ago = clockwork(clock.now());
 	const prs = new Map<string, PrSnapshot>();
 	let position = 0;
 
-	/** Puts back the opening pull requests and returns every ref that existed before or after, so each can be refreshed. */
 	function load(): PrRef[] {
 		const touched = new Map([...prs].map(([key, pr]) => [key, refOf(pr)]));
 		prs.clear();

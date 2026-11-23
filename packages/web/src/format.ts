@@ -49,7 +49,7 @@ export function shortRepo(repo: string, org: string): string {
 	return repo.toLowerCase().startsWith(prefix.toLowerCase()) ? repo.slice(prefix.length) : repo;
 }
 
-/** Minutes since local midnight, for quiet hours. */
+/** Minutes since local midnight. */
 export function minuteOfDay(date: Date): number {
 	return date.getHours() * 60 + date.getMinutes();
 }

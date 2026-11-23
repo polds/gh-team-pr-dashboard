@@ -8,7 +8,7 @@ import type {
 	TeamSlug,
 } from "./model.ts";
 
-/** What the board shows for one pull request. The server builds it, and the browser renders it. */
+/** What the board shows for one pull request. */
 export interface Card {
 	id: PrId;
 	repo: string;
@@ -62,7 +62,7 @@ export interface PresenceEntry {
 	viewing: PrId | null;
 }
 
-/** Aggregate outcomes of `likely_ready_for_rereview` cards. It holds no names. */
+/** Aggregate outcomes of `likely_ready_for_rereview` cards. */
 export interface HeuristicStats {
 	confirmed: number;
 	rejected: number;

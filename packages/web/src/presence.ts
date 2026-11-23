@@ -4,11 +4,6 @@ import { sendPresence } from "./api.ts";
 
 const HEARTBEAT_MS = 20_000;
 
-/**
- * Reports this tab to the board while presence is on: once when it turns on, on every change of the
- * open pull request, and every 20 seconds. Turning it off, closing the tab, or unmounting reports
- * leaving. While it is off, nothing is sent.
- */
 export function usePresence(enabled: boolean, viewing: PrId | null): void {
 	const viewingRef = useRef(viewing);
 

@@ -10,11 +10,9 @@ export interface SignalStatus {
 	result: SignalResult | null;
 }
 
-/** What every card needs from the page, so lanes and lists do not thread it through. */
 export interface RadarEnv {
 	viewer: Viewer;
 	config: BoardConfig;
-	/** Now by the server's clock, refreshed every 30 seconds. */
 	now: Date;
 	/** Other people who have this pull request's details open. Empty while the viewer's presence is off. */
 	watchersOf(id: PrId): Person[];

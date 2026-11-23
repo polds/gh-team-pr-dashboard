@@ -28,9 +28,7 @@ export interface HeldPr {
 }
 
 interface Entry extends HeldPr {
-	/** When this server first saw the pull request merged or closed. Null while it is open. */
 	endedSeenAt: number | null;
-	/** True once the current `likely_ready_for_rereview` spell has counted toward the heuristic. */
 	outcomeCounted: boolean;
 }
 
@@ -42,7 +40,6 @@ export interface Board {
 	setTeams(teams: TeamInfo[], now: Date): ServerEvent[];
 	/** Stores the author's signal against the held head SHA, or clears it, and re-applies the pull request. */
 	setSignal(id: PrId, kind: AuthorSignal["kind"] | null, now: Date): ServerEvent[];
-	/** The author re-requested review on GitHub through Radar. */
 	noteRerequest(id: PrId): void;
 	get(id: PrId): HeldPr | undefined;
 	cards(): Card[];
@@ -108,7 +105,6 @@ export function createBoard({ store, cardConfig }: { store: Store; cardConfig: C
 		return buildCard({ snapshot, derived, since, now, config: cardConfig, suggested });
 	}
 
-	/** Human reviews in `snapshot` newer than every review the board held, newest first. */
 	function newReviews(held: Entry, snapshot: PrSnapshot): Review[] {
 		const seen = Math.max(Number.NEGATIVE_INFINITY, ...reviewsOf(held.snapshot).map((review) => Date.parse(review.submittedAt)));
 		return reviewsOf(snapshot)

@@ -21,10 +21,6 @@ export async function askPermission(): Promise<Permission> {
 	}
 }
 
-/**
- * Feeds every change of the cards, and a tick every 30 seconds, through core's `notifierStep`, and
- * raises what it delivers. The first board only sets the baseline: opening the tab is not news.
- */
 export function useDesktopNotifications({ cards, login, prefs }: { cards: Card[]; login: Login; prefs: NotificationPrefs }): void {
 	const notifier = useRef(INITIAL_NOTIFIER_STATE);
 	const previous = useRef<Card[] | null>(null);

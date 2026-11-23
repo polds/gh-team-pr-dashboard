@@ -79,7 +79,7 @@ const orgTeamsSchema = z.object({
 const pullRequestsSchema = z.record(z.string(), z.object({ pullRequest: z.unknown() }).nullable());
 
 export interface GitHubSource extends PullRequestSource {
-	/** The installation token the source itself uses, for the sign-in membership check. */
+	/** The installation token the source itself uses. */
 	installationToken(): Promise<string>;
 }
 

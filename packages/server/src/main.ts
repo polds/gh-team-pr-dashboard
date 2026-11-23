@@ -20,7 +20,6 @@ function configOrExit(): Config {
 const config = configOrExit();
 const radar = createRadar({ config, clock: systemClock, log });
 
-// Listen before the first sweep: a large organization takes longer to sweep than the liveness probe waits.
 const server = serve({ fetch: radar.app.fetch, port: config.port }, (info) => {
 	log.info("server.listening", { port: info.port, mode: config.mode, org: config.org, rerequestEnabled: config.rerequestEnabled });
 });

@@ -34,7 +34,6 @@ const team = (slug: string) => {
 
 type Repo = "monorepo" | "infra" | "mobile";
 
-/** Times in the scenario, given as hours before the moment the scenario starts. */
 export type Clockwork = (hoursAgo: number) => IsoTime;
 
 export function clockwork(start: Date): Clockwork {
@@ -116,7 +115,6 @@ function pr({ repo, number, head, ...facts }: PrFacts): PrSnapshot {
 
 export const refOf = (snapshot: PrSnapshot): PrRef => ({ owner: snapshot.repo.owner, name: snapshot.repo.name, number: snapshot.number });
 
-/** One pull request in each state and group the board shows. */
 export function initialPullRequests(ago: Clockwork): PrSnapshot[] {
 	return [
 		pr({
@@ -303,7 +301,6 @@ function existing(before: PrSnapshot | undefined): PrSnapshot {
 const monorepo = (number: number): PrRef => ({ owner: "atum", name: "monorepo", number });
 const mobile = (number: number): PrRef => ({ owner: "atum", name: "mobile", number });
 
-/** The product story, in order. Each step changes one pull request. */
 export const SCRIPT: readonly ScriptStep[] = [
 	{
 		description: "grace pushes a fix to atum/mobile#77 and answers barbara's threads. The card moves to likely ready for re-review.",

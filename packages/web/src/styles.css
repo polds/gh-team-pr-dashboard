@@ -24,7 +24,6 @@
 	--mine-column: #f7f8ff;
 	--yours-bg: #f2f4ff;
 
-	/* Okabe-Ito based: distinct in lightness as well as hue, so they hold up for common color-vision deficiencies. */
 	--court-reviewers: #0a6ec2;
 	--court-author: #c26a00;
 	--court-ci: #b0418f;
@@ -176,7 +175,6 @@ select {
 	flex: none;
 }
 
-/* Buttons */
 
 .button {
 	display: inline-flex;
@@ -274,7 +272,6 @@ select {
 	padding: 4px 2px;
 }
 
-/* Switch */
 
 .switch {
 	display: inline-flex;
@@ -318,7 +315,6 @@ select {
 	transform: translateX(12px);
 }
 
-/* Avatars */
 
 .avatar {
 	position: relative;
@@ -395,7 +391,6 @@ select {
 	background: var(--text-3);
 }
 
-/* Top bar */
 
 .topbar {
 	position: sticky;
@@ -516,7 +511,6 @@ select {
 	color: var(--text-3);
 }
 
-/* Notifications menu */
 
 .menu {
 	position: relative;
@@ -591,7 +585,6 @@ select {
 	font-size: 12.5px;
 }
 
-/* Page */
 
 .page {
 	display: grid;
@@ -600,7 +593,6 @@ select {
 	padding: 16px 20px 28px;
 }
 
-/* Mine */
 
 .mine {
 	position: relative;
@@ -687,7 +679,6 @@ select {
 	list-style: none;
 }
 
-/* Board */
 
 .board {
 	display: grid;
@@ -953,7 +944,6 @@ select {
 	color: var(--text-3);
 }
 
-/* Card */
 
 .card {
 	position: relative;
@@ -1207,7 +1197,6 @@ select {
 	background: color-mix(in srgb, var(--surface) 70%, transparent);
 }
 
-/* Detail panel */
 
 .detail {
 	position: fixed;
@@ -1341,7 +1330,6 @@ select {
 	padding-top: 4px;
 }
 
-/* Toasts */
 
 .toasts {
 	position: fixed;
@@ -1370,7 +1358,6 @@ select {
 	margin-top: 2px;
 }
 
-/* Footer */
 
 .footer {
 	padding: 0 20px 24px;
@@ -1378,7 +1365,6 @@ select {
 	font-size: 12px;
 }
 
-/* Splash screens */
 
 .splash {
 	display: grid;
@@ -1411,7 +1397,6 @@ select {
 	font-size: 12.5px;
 }
 
-/* Skeleton */
 
 .skeleton {
 	border-radius: 6px;
@@ -1431,7 +1416,6 @@ select {
 	background-size: 200% 100%;
 }
 
-/* Motion */
 
 @keyframes card-in {
 	from {
@@ -1487,7 +1471,6 @@ select {
 	}
 }
 
-/* Narrow windows */
 
 @media (max-width: 1000px) {
 	.mine-columns {

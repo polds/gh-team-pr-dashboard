@@ -56,7 +56,6 @@ export function App() {
 	}
 }
 
-/** Loads `/api/board`, dropping any load still in flight. A failed load tries again by itself. */
 function useBoardLoader(dispatch: Dispatch<Action>): () => void {
 	const inFlight = useRef<AbortController | null>(null);
 	const retry = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -212,7 +211,6 @@ function heuristicSentence({ confirmed, rejected }: { confirmed: number; rejecte
 	return `Re-review guesses so far: ${confirmed} confirmed, ${rejected} marked not ready.`;
 }
 
-/** The time by the server's clock, refreshed every 30 seconds and whenever the tab comes back into view. */
 function useNow(offsetMs: number): Date {
 	const [now, setNow] = useState(() => new Date(Date.now() + offsetMs));
 	useEffect(() => {
@@ -231,7 +229,6 @@ function useNow(offsetMs: number): Date {
 	return now;
 }
 
-/** The author's signal requests from this tab and what came back, keyed by pull request. */
 function useSignals(dispatch: Dispatch<Action>): { statuses: ReadonlyMap<PrId, SignalStatus>; send(id: PrId, kind: SignalKind): void } {
 	const [statuses, setStatuses] = useState<ReadonlyMap<PrId, SignalStatus>>(new Map());
 	const update = useCallback((id: PrId, status: SignalStatus | null, onlyIf?: SignalStatus) => {

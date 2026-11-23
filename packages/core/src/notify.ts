@@ -103,10 +103,6 @@ function isQuiet(quietHours: NotificationPrefs["quietHours"], minuteOfDay: numbe
 		: minuteOfDay >= startMinute || minuteOfDay < endMinute;
 }
 
-/**
- * Turns compare after the opt-in filter, so a re-request that follows a heuristic turn the user
- * never heard about still counts as new.
- */
 function advance(queue: Turn[], input: NotifierInput, login: Login, prefs: NotificationPrefs): { queue: Turn[]; fresh: Turn[] } {
 	if (input.kind === "tick") return { queue, fresh: [] };
 	const before = wantedTurns(login, input.before, prefs);

@@ -35,7 +35,6 @@ export interface FilterOptions {
 	teams: { slug: TeamSlug; name: string }[];
 }
 
-/** The values the filter menus offer, taken from the cards on the board. */
 export function filterOptions(cards: readonly Card[]): FilterOptions {
 	const repos = new Set<string>();
 	const areas = new Set<string>();

@@ -13,7 +13,6 @@ export const STATE_LABEL: Record<PrState, string> = {
 	closed: "Closed",
 };
 
-/** Whose move it is, said three ways: as a lane subtitle, on a card, and in the legend. */
 export const COURT_TEXT: Record<Court, { waiting: string; card: string; legend: string }> = {
 	reviewers: { waiting: "Waiting on reviewers", card: "With reviewers", legend: "Reviewers" },
 	author: { waiting: "Waiting on the author", card: "With the author", legend: "Author" },
@@ -59,7 +58,6 @@ export function viaText(via: ActorVia): string {
 	}
 }
 
-/** What happened after the author pressed a signal button, in plain words. */
 export function signalMessage(kind: "ready" | "not_ready", result: SignalResult): { tone: "ok" | "problem"; text: string } {
 	if (result.ok) {
 		if (kind === "not_ready") return { tone: "ok", text: "Marked not ready. It stays with you until your next push." };

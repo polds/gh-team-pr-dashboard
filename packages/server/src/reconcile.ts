@@ -14,11 +14,6 @@ export interface Reconciler {
 	lastSweepAt(): IsoTime | null;
 }
 
-/**
- * Brings the board to what GitHub lists now. It fetches pull requests that are
- * new or whose listing fingerprint moved, every one on each `fullSweepEvery`-th
- * sweep, and each held open pull request the listing no longer has.
- */
 export function createReconciler({
 	source,
 	board,

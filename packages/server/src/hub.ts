@@ -10,7 +10,6 @@ export interface Hub {
 	close(): void;
 }
 
-/** A stream this far behind belongs to a client that stopped reading. It is dropped, and the client resyncs when it reconnects. */
 const MAX_QUEUED_CHUNKS = 500;
 
 const encoder = new TextEncoder();

@@ -23,7 +23,6 @@ export function Header({
 	connection: Connection;
 	presenceOn: boolean;
 	onPresence(on: boolean): void;
-	/** Everyone else on the board who has presence on. */
 	people: Person[];
 	notifications: ReactNode;
 	onSignOut(): void;

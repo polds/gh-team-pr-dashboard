@@ -133,7 +133,6 @@ export const RadarMark = ({ size = 22 }: { size?: number }) => (
 	</svg>
 );
 
-/** One small mark per reviewer status, drawn in the corner of the reviewer's avatar. */
 export function ReviewerMark({ kind }: { kind: ReviewerStatusKind }) {
 	switch (kind) {
 		case "approved":

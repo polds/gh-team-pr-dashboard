@@ -17,16 +17,9 @@ interface Pending {
 	ref: PrRef;
 	firstAt: number;
 	dueAt: number;
-	/** True when this entry is the one retry after a failed fetch. */
 	retry: boolean;
 }
 
-/**
- * The dirty queue, and the one path from `source.fetch` to `apply`. Each fetch
- * takes a ticket when it starts. A result is applied only if no fetch that
- * started later has applied the same pull request already, so a slow sweep
- * cannot overwrite what a webhook refresh just read.
- */
 export function createRefresher({
 	source,
 	apply,

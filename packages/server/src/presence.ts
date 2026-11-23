@@ -7,7 +7,6 @@ export interface Presence {
 	stop(): void;
 }
 
-/** Held in memory only. Nothing here is written to disk or logged. */
 export function createPresence({
 	clock,
 	onChange,

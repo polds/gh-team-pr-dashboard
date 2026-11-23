@@ -9,10 +9,6 @@ import { AuthorSignal, ChecksBadge } from "./CardView.tsx";
 import { useRadar } from "./context.ts";
 import { CrossIcon, ExternalIcon, ReviewerMark, SparkIcon } from "./icons.tsx";
 
-/**
- * The side panel with everything Radar knows about one pull request. A modal `<dialog>` traps focus
- * and closes on Escape; on close, focus goes back to where it was.
- */
 export function Detail({ card, onClose }: { card: Card | undefined; onClose(): void }) {
 	const { config } = useRadar();
 	const dialogRef = useRef<HTMLDialogElement>(null);

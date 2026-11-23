@@ -1,7 +1,7 @@
 import { areasOf, isBotAuthor } from "./card.ts";
 import type { Login, Person, PrSnapshot, TeamSlug } from "./model.ts";
 
-/** When each person last reviewed each area of each repository. Callers only pass it around. It holds no counts. */
+/** When each person last reviewed each area of each repository. */
 export interface ReviewHistory {
 	readonly lastReviewed: Map<string, Map<string, Map<Login, number>>>;
 }

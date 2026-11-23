@@ -200,7 +200,6 @@ function Heuristic({ card }: { card: Card }) {
 	);
 }
 
-/** The one action Radar offers: the author tells reviewers the pull request is, or is not, ready again. */
 export function AuthorSignal({ card }: { card: Card }) {
 	const env = useRadar();
 	const { state } = card.derived;

@@ -1,6 +1,3 @@
-// End-to-end check of the real server and the built web client against the simulated organization.
-// Usage: node scripts/verify-demo.mjs [screenshot-dir]
-// Needs `npm run build` first. `npm run verify:demo` does both.
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -5,7 +5,6 @@ import { CardView } from "./CardView.tsx";
 import type { CardVariant } from "./CardView.tsx";
 import { useRadar } from "./context.ts";
 
-/** Everything that involves the viewer, above the shared board. Filters never touch it. */
 export function Mine({ mine }: { mine: MineLists }) {
 	const { viewer } = useRadar();
 	const needsYou = mine.needsMyReview.length + mine.myTurn.length;

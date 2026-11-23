@@ -9,7 +9,6 @@ export interface Lane {
 	court: Court;
 }
 
-/** `approved_blocked` has no single court. Its lane shows the author, who holds most blockers. */
 export const LANES: readonly Lane[] = [
 	{ id: "needs_review", title: "Needs review", court: "reviewers" },
 	{ id: "in_review", title: "In review", court: "reviewers" },

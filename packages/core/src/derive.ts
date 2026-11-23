@@ -75,7 +75,6 @@ interface StatusRow {
 
 const settled = (since: IsoTime): StatusRow => ({ since, reasons: [], confidence: null });
 
-/** docs/design.md, "Step 1: one status per reviewer". The first row that matches wins. */
 const REVIEWER_STATUS_TABLE: readonly { kind: ReviewerStatusKind; match: (r: ReviewerFacts) => StatusRow | null }[] = [
 	{
 		kind: "requested",
@@ -258,7 +257,7 @@ function gatesOf(snapshot: PrSnapshot): Gates {
 	};
 }
 
-/** docs/design.md, "Merge blockers". GitHub reports BLOCKED while a required check runs, so a running check also explains BLOCKED. */
+/** GitHub reports BLOCKED while a required check runs, so a running check also explains BLOCKED. */
 const BLOCKER_TABLE: readonly { blocker: Blocker; when: (g: Gates, found: readonly Blocker[]) => boolean }[] = [
 	{ blocker: "conflicts", when: (g) => g.conflicting },
 	{ blocker: "ci_failing", when: (g) => g.failing.length > 0 },
@@ -325,7 +324,6 @@ const outcome = (state: PrState, court: Court, blockers: Blocker[] = []): Outcom
 
 const has = (reviewers: readonly Assessment[], kind: ReviewerStatusKind) => reviewers.some((r) => r.status.kind === kind);
 
-/** docs/design.md, "Step 2: fold reviewer statuses into one state", rows 1 to 11. Row 12 is the fallback in `fold`. */
 const FOLD_TABLE: readonly ((f: FoldFacts) => Outcome | null)[] = [
 	(f) => (f.snapshot.lifecycle.kind === "merged" ? outcome("merged", "nobody") : null),
 	(f) => (f.snapshot.lifecycle.kind === "closed" ? outcome("closed", "nobody") : null),

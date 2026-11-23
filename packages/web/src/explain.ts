@@ -1,7 +1,6 @@
 import type { Blocker, Reason } from "@radar/core";
 import { formatAgo, listOf, plural } from "./format.ts";
 
-/** One plain sentence for one reason a pull request is in its state. */
 export function explain(reason: Reason, now: Date): string {
 	switch (reason.kind) {
 		case "draft":

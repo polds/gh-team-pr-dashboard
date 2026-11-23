@@ -166,11 +166,6 @@ export function parseSignalResponse(value: unknown): AuthorSignalResponse | null
 	return null;
 }
 
-/**
- * True when every field the board reads to place and draw a card has its declared shape.
- * Sentence-level variants such as reason kinds are not checked here: their renderers fall back
- * to a generic sentence, so a newer server cannot break an open tab.
- */
 function isCard(value: unknown): value is Card {
 	if (!isObject(value)) return false;
 	const { derived, checks, helpWanted } = value;

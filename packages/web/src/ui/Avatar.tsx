@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import type { Person } from "@radar/core";
 
-/** A round avatar. When the image fails, the login's initials stand in, so a broken URL never shows a broken image. */
 export function Avatar({ person, size = 20, alt, children }: { person: Pick<Person, "login" | "avatarUrl">; size?: number; alt?: string; children?: ReactNode }) {
 	const [failed, setFailed] = useState(false);
 	const label = alt ?? person.login;
@@ -20,7 +19,6 @@ export function Avatar({ person, size = 20, alt, children }: { person: Pick<Pers
 	);
 }
 
-/** Up to `max` avatars, then "+N" for the rest. */
 export function AvatarStack({ people, max = 4, size = 20, label }: { people: readonly Person[]; max?: number; size?: number; label: string }) {
 	if (people.length === 0) return null;
 	const shown = people.slice(0, max);

@@ -224,7 +224,6 @@ function eventKey(item: TimelineItem): string | null {
 	}
 }
 
-/** The latest time of each event kind, and of the review request event for each reviewer. */
 function latestEventTimes(timeline: TimelineItem[]): Map<string, IsoTime> {
 	const latest = new Map<string, IsoTime>();
 	for (const item of timeline) {

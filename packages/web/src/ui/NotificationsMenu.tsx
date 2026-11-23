@@ -15,7 +15,6 @@ const DIGEST_LABEL: Record<(typeof DIGEST_CHOICES)[number], string> = {
 	60: "Every hour",
 };
 
-/** The header button and the prefs panel it opens. Permission is asked only when the switch is turned on. */
 export function NotificationsMenu({ prefs, onChange }: { prefs: NotificationPrefs; onChange(prefs: NotificationPrefs): void }) {
 	const [open, setOpen] = useState(false);
 	const [permission, setPermission] = useState<Permission>(notificationPermission);

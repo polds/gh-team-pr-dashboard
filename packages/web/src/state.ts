@@ -4,7 +4,6 @@ export type Connection = "live" | "reconnecting";
 
 export type Celebration = Extract<ServerEvent, { kind: "celebrate" }>;
 
-/** The board response minus the parts that live events change. */
 type BoardMeta = Omit<BoardResponse, "cards" | "presence">;
 
 type Phase =
@@ -16,7 +15,7 @@ type Phase =
 			board: BoardMeta;
 			cards: ReadonlyMap<PrId, Card>;
 			presence: PresenceEntry[];
-			/** Server clock minus browser clock, so time in state does not drift with a wrong local clock. */
+			/** Server clock minus browser clock. */
 			clockOffsetMs: number;
 	  };
 
@@ -25,8 +24,7 @@ export type ClientState = Phase & {
 	/** At most one toast per pull request, oldest first. */
 	toasts: Celebration[];
 	/**
-	 * Events that arrived while a board load was in flight. The load's snapshot may predate them,
-	 * so they are replayed onto it. Null when no load is in flight.
+	 * Events that arrived while a board load was in flight. Null when no load is in flight.
 	 */
 	inFlight: ServerEvent[] | null;
 };
@@ -117,7 +115,6 @@ function applyEvent(state: ClientState, event: ServerEvent): ClientState {
 	}
 }
 
-/** Events whose effect a newer snapshot could overwrite. A toast is not one of them. */
 function isReplayable(event: ServerEvent): boolean {
 	return event.kind === "card" || event.kind === "remove" || event.kind === "presence";
 }

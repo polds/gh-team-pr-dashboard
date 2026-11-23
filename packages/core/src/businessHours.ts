@@ -32,14 +32,12 @@ function offsetAt(instant: number, timeZone: string): number {
 	return wallClockAsUtc(instant, timeZone) - Math.floor(instant / 1000) * 1000;
 }
 
-/** The local calendar date of `instant`, as the UTC midnight of that date. */
 function localDate(instant: number, timeZone: string): number {
 	const wall = wallClockAsUtc(instant, timeZone);
 	return wall - (((wall % DAY_MS) + DAY_MS) % DAY_MS);
 }
 
 /**
- * The first instant of the local calendar date `date`, given as the UTC midnight of that date.
  * Midnight can occur twice when clocks fall back across it, or never when they spring forward
  * across it, so each candidate is checked against the offset in force at that instant.
  */

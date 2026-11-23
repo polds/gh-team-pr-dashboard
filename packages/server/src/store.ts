@@ -13,10 +13,6 @@ export interface StateEntry {
 	since: IsoTime;
 }
 
-/**
- * The only state the server keeps across restarts: author signals, state-entry
- * times for open pull requests, and the two aggregate heuristic counters.
- */
 export interface Store {
 	signal(id: PrId): AuthorSignal | null;
 	setSignal(id: PrId, signal: AuthorSignal | null): void;
@@ -72,7 +68,7 @@ function load(file: string, log: Logger): StoredFile {
 	}
 }
 
-/** `file` null keeps everything in memory, as the demo does. Writes are debounced and land through a rename, so a crash leaves the old file or the new one. */
+/** `file` null keeps everything in memory. Writes are debounced and land through a rename, so a crash leaves the old file or the new one. */
 export function createStore({
 	file,
 	clock,
