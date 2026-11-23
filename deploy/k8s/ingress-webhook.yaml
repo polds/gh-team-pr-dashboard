@@ -1,0 +1,23 @@
+# GitHub has to reach the webhook receiver from the internet. This ingress exposes that one path and nothing else.
+# The receiver rejects any request without a valid X-Hub-Signature-256 header.
+# Attach a Cloud Armor policy that allows only the "hooks" ranges from https://api.github.com/meta.
+# If inbound traffic from GitHub is not allowed at all, delete this file from kustomization.yaml and set
+# RADAR_RECONCILE_SECONDS to 60. The board then updates within a minute, not within seconds.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: radar-webhook
+  annotations:
+    kubernetes.io/ingress.class: gce
+spec:
+  rules:
+    - host: radar-hooks.example.com
+      http:
+        paths:
+          - path: /webhooks/github
+            pathType: Exact
+            backend:
+              service:
+                name: radar
+                port:
+                  name: http
