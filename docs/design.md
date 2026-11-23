@@ -58,7 +58,7 @@ An event that maps to no known pull request is dropped. The reconcile sweep cove
 
 The refresher waits 1.5 seconds after the last hint for a pull request, and never more than 5 seconds after the first, then fetches. A burst of 30 `check_run` events costs one request.
 
-The reconcile sweep pages through every repository in the installation and fetches every open pull request with the same GraphQL fragment. A pull request that the board holds and the sweep did not see gets one direct refetch, which finds it merged or closed. Running the sweep twice gives the same board.
+The reconcile sweep pages through every repository in the installation and lists its open pull requests with a few cheap fields: `updatedAt`, the head commit, the draft flag, the review decision, mergeability, the merge state, the review request count, and the check rollup. Together they form a fingerprint. The sweep fetches the full snapshot, with the same GraphQL fragment as the refresher, only for a pull request that is new or whose fingerprint moved. Every twelfth sweep (`RADAR_FULL_SWEEP_EVERY`) fetches every open pull request, which catches any change the cheap fields do not show. A pull request that the board holds and the sweep did not see gets one direct refetch, which finds it merged or closed. Running the sweep twice gives the same board, and the second run fetches nothing.
 
 ### Push to browsers
 
@@ -92,7 +92,7 @@ A thread is addressed when it is resolved, or when the pull request author wrote
 The feedback from one reviewer is addressed when both of these hold:
 
 - Every thread that the reviewer started is addressed.
-- The author did something after the review. For a `CHANGES_REQUESTED` review, the head commit differs from the commit that the review was submitted on. For comment-only feedback, a new commit or a reply is enough.
+- The author did something after the review. For a `CHANGES_REQUESTED` review, the head commit differs from the commit that the review was submitted on. For comment-only feedback, a new commit or a reply is enough, and so is every thread being resolved.
 
 ### Step 2: fold reviewer statuses into one state
 
@@ -170,7 +170,7 @@ The server runs as one replica, because the board lives in memory. A second repl
 
 ## Board rules
 
-**Lanes.** The board has one lane per open state. Drafts and bot pull requests sit in two collapsed groups. A merged pull request stays visible for a short time, then leaves.
+**Lanes.** The board has one lane per open state. Drafts and bot pull requests sit in two collapsed groups. A merged or closed pull request stays visible for 15 minutes, then leaves.
 
 **Order within a lane.** Two rules, in this order:
 

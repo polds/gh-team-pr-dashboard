@@ -191,7 +191,8 @@ function feedbackOf(r: Omit<ReviewerFacts, "feedback">, signal: Signal): Feedbac
 	const headMoved =
 		review === null ? Date.parse(snapshot.headCommittedAt) > Date.parse(givenAt) : review.commitSha !== snapshot.headSha;
 	const authorReplies = r.threads.filter((t) => t.lastCommentBy.login === author);
-	const authorActed = headMoved || (changeRequest === null && authorReplies.length > 0);
+	const everyThreadResolved = counts.resolved === r.threads.length;
+	const authorActed = headMoved || (changeRequest === null && (authorReplies.length > 0 || everyThreadResolved));
 	const awaitingAuthor = r.threads.filter((_, i) => states[i] === "open" || states[i] === "outdated");
 	const estimated = (changeRequest !== null && r.threads.length === 0) || counts.outdated > 0 ? "medium" : "high";
 	return {

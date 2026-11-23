@@ -449,10 +449,18 @@ describe("comment-only feedback", () => {
 		expect(derived.state).toBe("likely_ready_for_rereview");
 	});
 
-	it("keeps the ball with the author when a thread was resolved with no commit or reply from the author", () => {
+	it("returns the ball to the reviewer when every comment thread is resolved, even with no commit or reply", () => {
 		const derived = deriveOf({
 			...reviews(review(cora, "COMMENTED", hour(2), "c1")),
 			threads: [thread(cora, { startedAt: hour(2), isResolved: true })],
+		});
+		expect(derived).toMatchObject({ state: "likely_ready_for_rereview", court: "reviewers", actors: [direct(cora, hour(2))] });
+	});
+
+	it("keeps the ball with the author while one comment thread is open and the others are resolved", () => {
+		const derived = deriveOf({
+			...reviews(review(cora, "COMMENTED", hour(2), "c1")),
+			threads: [thread(cora, { startedAt: hour(2), isResolved: true }), thread(cora, { startedAt: hour(2) })],
 		});
 		expect(derived).toMatchObject({ state: "changes_requested", court: "author" });
 	});
