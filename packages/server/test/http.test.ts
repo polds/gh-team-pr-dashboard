@@ -233,6 +233,24 @@ describe("HTTP app", () => {
 			expect(JSON.stringify(h.logger.lines)).not.toContain("ghu_user_token");
 		});
 
+		async function sessionAfterSignIn(app: ReturnType<typeof harness>["app"]) {
+			const { state, callback } = await signIn(app);
+			const response = await callback(`code=c0de&state=${state}`);
+			const cookie = setCookies(response).find((candidate) => candidate.startsWith(`${SESSION_COOKIE}=`)) ?? "";
+			const value = decodeURIComponent((cookie.split(";")[0] ?? "").slice(SESSION_COOKIE.length + 1));
+			return createSessionCodec(SECRET).open(value, new Date());
+		}
+
+		it("keeps the user's GitHub token out of the session while the re-request is off", async () => {
+			h = harness({ config: { rerequestEnabled: false } });
+			expect(await sessionAfterSignIn(h.app)).toMatchObject({ login: "ana", userToken: "" });
+		});
+
+		it("keeps the user's GitHub token in the session when the re-request is on, because that write needs it", async () => {
+			h = harness({ config: { rerequestEnabled: true } });
+			expect(await sessionAfterSignIn(h.app)).toMatchObject({ login: "ana", userToken: "ghu_user_token" });
+		});
+
 		it("refuses a callback whose state does not match the cookie", async () => {
 			h = harness();
 			const { callback } = await signIn(h.app);

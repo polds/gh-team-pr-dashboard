@@ -234,7 +234,8 @@ export function createApp(deps: AppDeps): App {
 				if (!member) {
 					return page(c, 403, "Not a member", `<p>PR Review Radar is open to members of the ${escapeHtml(config.org)} organization on GitHub.</p>`);
 				}
-				setSession(c, { ...user, userToken: token.accessToken, expiresAt: sessionExpiry(clock.now(), token.expiresInSeconds) });
+				const userToken = config.rerequestEnabled ? token.accessToken : "";
+				setSession(c, { ...user, userToken, expiresAt: sessionExpiry(clock.now(), token.expiresInSeconds) });
 				return c.redirect("/", 302);
 			} catch (error) {
 				log.warn("auth.callback_failed", { error: errorMessage(error) });
