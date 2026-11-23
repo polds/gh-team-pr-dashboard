@@ -137,6 +137,13 @@ describe("parsePullRequest", () => {
 	});
 
 	it.each([
+		["review threads", { ...pullRequestNode, reviewThreads: { ...pullRequestNode.reviewThreads, pageInfo: { hasNextPage: true, endCursor: "c" } } }],
+		["review requests", { ...pullRequestNode, reviewRequests: { ...pullRequestNode.reviewRequests, pageInfo: { hasNextPage: true, endCursor: "c" } } }],
+	])("refuses to build a snapshot when the %s stop short of their end", (_label, node) => {
+		expect(() => parsePullRequest(node)).toThrow(/missing later pages/);
+	});
+
+	it.each([
 		["a timestamp that is not ISO", { ...pullRequestNode, createdAt: "last Tuesday" }],
 		["a number sent as a string", { ...pullRequestNode, number: "42" }],
 		["a missing field", { ...pullRequestNode, headRefOid: undefined }],

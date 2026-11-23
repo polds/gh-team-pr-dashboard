@@ -11,8 +11,9 @@ import { createRadar } from "../src/radar.ts";
 import type { Radar } from "../src/radar.ts";
 import { createSessionCodec } from "../src/session.ts";
 import { asLogin } from "@radar/core";
-import { fakeFetch, graphqlBody, json, pullRequestAliases } from "./github/fakeGitHub.ts";
-import { pullRequestNodeFor } from "./github/fixtures.ts";
+import { answerQuery, fakeFetch, graphqlBody, json, pullRequestAliases, repositoryWorld, worldOf } from "./github/fakeGitHub.ts";
+import type { World } from "./github/fakeGitHub.ts";
+import { REVIEWED_SHA, pullRequestNodeFor } from "./github/fixtures.ts";
 import { jsonOf, recordingLogger } from "./helpers.ts";
 
 const SESSION_SECRET = "s".repeat(64);
@@ -39,6 +40,22 @@ function fakeGitHub() {
 		}
 		const data = Object.fromEntries(pullRequestAliases(query).map(({ alias, ...ref }) => [alias, { pullRequest: pullRequestNodeFor(ref) }]));
 		return json({ data });
+	});
+}
+
+/** GitHub answering every query from one repository, acme/api, that holds `pr`. */
+function worldGitHub(pr: World) {
+	return fakeFetch((request) => {
+		if (request.url === "https://api.github.com/app/installations/9/access_tokens") return json({ token: INSTALLATION_TOKEN, expires_at: "2099-01-01T00:00:00Z" });
+		if (request.url.startsWith("https://api.github.com/installation/repositories")) return json({ repositories: [{ name: "api", owner: { login: "acme" }, archived: false }] });
+		if (request.url !== "https://api.github.com/graphql") return new Response("not found", { status: 404 });
+		const { query, variables } = graphqlBody(request);
+		return json(
+			answerQuery(query, variables, {
+				repository: ({ owner, name }: { owner: string; name: string }) => (owner === "acme" && name === "api" ? repositoryWorld([pr]) : null),
+				organization: () => ({ teams: [], team: () => null }),
+			}),
+		);
 	});
 }
 
@@ -128,6 +145,26 @@ describe("GitHub mode wiring", () => {
 		const board = await radar.app.request("/api/board", { headers: { Cookie: cookie } });
 		radar.stop();
 		expect(board.status).toBe(401);
+	});
+
+	it("does not call a pull request addressed when its 30 newest of 130 review threads wait on the reviewer", async () => {
+		const carol = { __typename: "User", login: "carol", avatarUrl: "" };
+		const minute = (n: number) => new Date(Date.parse("2026-11-03T15:00:00Z") + n * 60_000).toISOString().replace(".000", "");
+		const thread = (n: number, isResolved: boolean) => ({ isResolved, isOutdated: false, comments: [{ createdAt: minute(n), author: carol }] });
+		const pr: World = {
+			...(worldOf(pullRequestNodeFor({ owner: "acme", name: "api", number: 42 })) as World),
+			updatedAt: "2026-11-04T10:00:00Z",
+			reviewDecision: "REVIEW_REQUIRED",
+			reviewRequests: [],
+			latestOpinionatedReviews: [],
+			latestReviews: [{ state: "COMMENTED", submittedAt: minute(0), author: carol, commit: { oid: REVIEWED_SHA } }],
+			reviewThreads: [...Array.from({ length: 100 }, (_, n) => thread(n, true)), ...Array.from({ length: 30 }, (_, n) => thread(100 + n, false))],
+		};
+		radar = createRadar({ config: githubConfig(), clock: systemClock, log: recordingLogger().log, fetch: worldGitHub(pr).fetch });
+		await radar.reconciler.sweep();
+		const board = await jsonOf<BoardResponse>(await radar.app.request("/api/board", { headers: { Cookie: cookieFor("alice") } }));
+		radar.stop();
+		expect(board.cards.map((card) => card.derived)).toMatchObject([{ state: "changes_requested", court: "author" }]);
 	});
 
 	it("keeps a pull request from a repository outside the organization off the board after a signed webhook and a sweep", async () => {

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { AppAuth } from "../../src/github/appAuth.ts";
 import { createGitHubSource, refKey } from "../../src/github/source.ts";
 import type { PrRef } from "../../src/github/source.ts";
-import { fakeFetch, graphqlBody, json, pullRequestAliases } from "./fakeGitHub.ts";
-import type { SentRequest } from "./fakeGitHub.ts";
-import { pullRequestNodeFor } from "./fixtures.ts";
+import { answerQuery, fakeFetch, graphqlBody, json, pullRequestAliases, repositoryWorld, worldOf } from "./fakeGitHub.ts";
+import type { SentRequest, World } from "./fakeGitHub.ts";
+import { HEAD_SHA, pullRequestNodeFor } from "./fixtures.ts";
 
 const INSTALLATION_ID = 77;
 
@@ -271,5 +271,78 @@ describe("createGitHubSource", () => {
 			["platform", "100"],
 			["platform", "200"],
 		]);
+	});
+
+	describe("the connections that feed the state", () => {
+		const ref = { owner: "acme", name: "api", number: 1 };
+		const user = (login: string) => ({ __typename: "User", login, avatarUrl: "" });
+		const many = <T>(count: number, make: (index: number) => T) => Array.from({ length: count }, (_, index) => make(index));
+		const at = (index: number) => new Date(Date.parse("2026-11-03T00:00:00Z") + index * 60_000).toISOString().replace(".000", "");
+		const review = (index: number) => ({ state: "CHANGES_REQUESTED", submittedAt: at(index), author: user(`reviewer-${index}`), commit: { oid: HEAD_SHA } });
+
+		function pullRequestWorld(changes: (pr: World) => World = (pr) => pr): World {
+			return changes({ ...(worldOf(pullRequestNodeFor(ref)) as World), updatedAt: "2026-11-04T10:00:00Z" });
+		}
+
+		/** GitHub over one repository holding `pr`. With `failAfter`, every GraphQL request past that many answers 502. */
+		function github(pr: World, failAfter = Number.POSITIVE_INFINITY) {
+			let answered = 0;
+			return fakeFetch((request) => {
+				if (request.url !== "https://api.github.com/graphql") return new Response("not found", { status: 404 });
+				answered += 1;
+				if (answered > failAfter) return new Response("bad gateway", { status: 502 });
+				const { query, variables } = graphqlBody(request);
+				const repository = ({ owner, name }: { owner: string; name: string }) => (owner === ref.owner && name === ref.name ? repositoryWorld([pr]) : null);
+				return json(answerQuery(query, variables, { repository }));
+			});
+		}
+
+		const fetchOne = async (fake: ReturnType<typeof github>) => {
+			const { radar, failures } = source(fake, { installationId: INSTALLATION_ID });
+			return { snapshots: await radar.fetch([ref]), failures };
+		};
+
+		const withChecks = (contexts: unknown[]) => (pr: World): World => {
+			const [head] = pr.commits as { commit: World }[];
+			return { ...pr, commits: [{ commit: { ...head!.commit, statusCheckRollup: { state: "SUCCESS", contexts } } }] };
+		};
+
+		it.each([
+			["review threads", 230, (pr: World) => ({ ...pr, reviewThreads: many(230, (index) => ({ isResolved: false, isOutdated: false, comments: [{ createdAt: at(index), author: user("carol") }] })) })],
+			["latest reviews", 130, (pr: World) => ({ ...pr, latestReviews: many(130, review) })],
+			["latest opinionated reviews", 130, (pr: World) => ({ ...pr, latestOpinionatedReviews: many(130, review) })],
+			["review requests", 130, (pr: World) => ({ ...pr, reviewRequests: many(130, (index) => ({ asCodeOwner: false, requestedReviewer: user(`requested-${index}`) })) })],
+			[
+				"check contexts",
+				230,
+				withChecks(many(230, (index) => ({ __typename: "CheckRun", name: `check-${index}`, status: "COMPLETED", conclusion: "SUCCESS", completedAt: at(index), isRequired: false }))),
+			],
+		])("holds all %s past the first page", async (label, count, changes) => {
+			const { snapshots, failures } = await fetchOne(github(pullRequestWorld(changes)));
+			const snapshot = snapshots.get(refKey(ref));
+			const held = {
+				"review threads": snapshot?.threads,
+				"latest reviews": snapshot?.latestReviews,
+				"latest opinionated reviews": snapshot?.decisiveReviews,
+				"review requests": snapshot?.reviewRequests,
+				"check contexts": snapshot?.checks,
+			}[label];
+			expect(failures).toEqual([]);
+			expect(held).toHaveLength(count);
+		});
+
+		it("asks one query when every connection fits on its first page", async () => {
+			const fake = github(pullRequestWorld());
+			const { snapshots } = await fetchOne(fake);
+			expect(snapshots.get(refKey(ref))).toMatchObject({ number: 1 });
+			expect(fake.requests).toHaveLength(1);
+		});
+
+		it("leaves out a pull request whose next page fails, so the caller keeps its old data", async () => {
+			const threads = many(130, (index) => ({ isResolved: true, isOutdated: false, comments: [{ createdAt: at(index), author: user("carol") }] }));
+			const { snapshots, failures } = await fetchOne(github(pullRequestWorld((pr) => ({ ...pr, reviewThreads: threads })), 1));
+			expect(snapshots.has(refKey(ref))).toBe(false);
+			expect(failures).toEqual([refKey(ref)]);
+		});
 	});
 });

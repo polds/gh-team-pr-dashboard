@@ -4,9 +4,10 @@ import type { Person, PrSnapshot, TeamSlug } from "@radar/core";
 import type { AppAuth } from "./appAuth.ts";
 import { collectPages, connection, graphqlRequest, isNotFound, page } from "./graphql.ts";
 import type { Fetch } from "./http.ts";
-import { ORG_TEAMS_QUERY, OPEN_PULL_REQUESTS_QUERY, TEAM_MEMBERS_QUERY, buildPullRequestsQuery, pullRequestAlias } from "./queries.ts";
+import { CONNECTION_PAGE_QUERIES, ORG_TEAMS_QUERY, OPEN_PULL_REQUESTS_QUERY, TEAM_MEMBERS_QUERY, buildPullRequestsQuery, pullRequestAlias } from "./queries.ts";
 import { findOrgInstallation, listInstallationRepos } from "./rest.ts";
-import { parsePullRequest } from "./snapshot.ts";
+import { pagedNodeSchemas, parsePullRequestNode, toSnapshot } from "./snapshot.ts";
+import type { Page, PagedConnection, PagedNode, Pages, PullRequestNode } from "./snapshot.ts";
 
 export interface PrRef {
 	owner: string;
@@ -78,6 +79,29 @@ const teamMembersSchema = z.object({
 
 const pullRequestsSchema = z.record(z.string(), z.object({ pullRequest: z.unknown() }).nullable());
 
+function pullRequestPageSchema<T extends z.ZodType>(node: T) {
+	return z
+		.object({ repository: z.object({ pullRequest: z.object({ connection: page(node) }).nullable() }).nullable() })
+		.transform((data) => data.repository?.pullRequest?.connection ?? null);
+}
+
+const checkContextsPageSchema = z
+	.object({
+		repository: z
+			.object({ object: z.object({ statusCheckRollup: z.object({ connection: page(pagedNodeSchemas.checkContexts) }).nullish() }).nullable() })
+			.nullable(),
+	})
+	.transform((data) => data.repository?.object?.statusCheckRollup?.connection ?? null);
+
+/** Null when the pull request, or the commit its checks belong to, is gone. */
+const pageSchemas: { [K in PagedConnection]: z.ZodType<Page<PagedNode<K>> | null> } = {
+	reviewRequests: pullRequestPageSchema(pagedNodeSchemas.reviewRequests),
+	latestOpinionatedReviews: pullRequestPageSchema(pagedNodeSchemas.latestOpinionatedReviews),
+	latestReviews: pullRequestPageSchema(pagedNodeSchemas.latestReviews),
+	reviewThreads: pullRequestPageSchema(pagedNodeSchemas.reviewThreads),
+	checkContexts: checkContextsPageSchema,
+};
+
 export interface GitHubSource extends PullRequestSource {
 	/** The installation token the source itself uses. */
 	installationToken(): Promise<string>;
@@ -142,6 +166,37 @@ export function createGitHubSource({
 		return data.organization.team?.members ?? { nodes: [], after: null };
 	}
 
+	async function rest<K extends PagedConnection>(ref: PrRef, pr: PullRequestNode, field: K): Promise<Page<PagedNode<K>>> {
+		const first: Page<PagedNode<K>> = pr.pages[field];
+		if (first.after === null) return first;
+		const { headOid } = pr;
+		if (field === "checkContexts" && headOid === null) throw new Error(`${refKey(ref)} has check contexts but no head commit`);
+		const more = await collectPages(async (after) => {
+			const next = await graphqlRequest({
+				token: await token(),
+				query: CONNECTION_PAGE_QUERIES[field],
+				variables: { owner: ref.owner, name: ref.name, number: ref.number, after, ...(field === "checkContexts" ? { oid: headOid } : {}) },
+				schema: pageSchemas[field],
+				fetch,
+			});
+			if (next === null) throw new Error(`${refKey(ref)} vanished while paging its ${field}`);
+			return next;
+		}, first.after);
+		return { nodes: [...first.nodes, ...more], after: null };
+	}
+
+	async function snapshotOf(ref: PrRef, node: unknown): Promise<PrSnapshot> {
+		const pr = parsePullRequestNode(node);
+		const pages: Pages = {
+			reviewRequests: await rest(ref, pr, "reviewRequests"),
+			latestOpinionatedReviews: await rest(ref, pr, "latestOpinionatedReviews"),
+			latestReviews: await rest(ref, pr, "latestReviews"),
+			reviewThreads: await rest(ref, pr, "reviewThreads"),
+			checkContexts: await rest(ref, pr, "checkContexts"),
+		};
+		return toSnapshot({ ...pr, pages });
+	}
+
 	async function fetchBatch(refs: PrRef[]): Promise<[string, PrSnapshot | null][]> {
 		const data = await graphqlRequest({
 			token: await token(),
@@ -150,11 +205,13 @@ export function createGitHubSource({
 			allowErrors: isNotFound,
 			fetch,
 		});
-		return refs.map((ref, index) => {
+		const entries: [string, PrSnapshot | null][] = [];
+		for (const [index, ref] of refs.entries()) {
 			const entry = data[pullRequestAlias(index)];
 			if (entry === undefined) throw new Error(`GraphQL response has no entry for ${refKey(ref)}`);
-			return [refKey(ref), entry === null || entry.pullRequest === null ? null : parsePullRequest(entry.pullRequest)];
-		});
+			entries.push([refKey(ref), entry === null || entry.pullRequest === null ? null : await snapshotOf(ref, entry.pullRequest)]);
+		}
+		return entries;
 	}
 
 	async function fetchBatchOrEach(batch: PrRef[]): Promise<[string, PrSnapshot | null][]> {

@@ -1,6 +1,8 @@
 export const HEAD_SHA = "1111111111111111111111111111111111111111";
 export const REVIEWED_SHA = "0000000000000000000000000000000000000000";
 
+const COMPLETE = { hasNextPage: false, endCursor: null };
+
 const avatar = (login: string) => `https://avatars.example/${login}`;
 const user = (login: string) => ({ __typename: "User", login, avatarUrl: avatar(login) });
 
@@ -64,6 +66,7 @@ export const pullRequestNode = {
 	isInMergeQueue: false,
 	autoMergeRequest: { enabledAt: "2026-11-04T12:00:00Z" },
 	reviewRequests: {
+		pageInfo: COMPLETE,
 		nodes: [
 			{ asCodeOwner: false, requestedReviewer: user("bob") },
 			{ asCodeOwner: true, requestedReviewer: { __typename: "Team", slug: "platform", name: "Platform" } },
@@ -77,6 +80,7 @@ export const pullRequestNode = {
 		],
 	},
 	latestOpinionatedReviews: {
+		pageInfo: COMPLETE,
 		nodes: [
 			carolChangesRequested,
 			renovateApproved,
@@ -85,6 +89,7 @@ export const pullRequestNode = {
 		],
 	},
 	latestReviews: {
+		pageInfo: COMPLETE,
 		nodes: [
 			carolChangesRequested,
 			renovateApproved,
@@ -96,6 +101,7 @@ export const pullRequestNode = {
 		],
 	},
 	reviewThreads: {
+		pageInfo: COMPLETE,
 		nodes: [
 			{
 				isResolved: false,
@@ -139,6 +145,7 @@ export const pullRequestNode = {
 					statusCheckRollup: {
 						state: "FAILURE",
 						contexts: {
+							pageInfo: COMPLETE,
 							nodes: [
 								checkRun("build", "COMPLETED", "SUCCESS", true),
 								checkRun("lint", "COMPLETED", "NEUTRAL"),

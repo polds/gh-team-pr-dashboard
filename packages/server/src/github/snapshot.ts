@@ -13,7 +13,7 @@ import type {
 	ReviewState,
 	ReviewThread,
 } from "@radar/core";
-import { connection } from "./graphql.ts";
+import { connection, page } from "./graphql.ts";
 
 const isoTimeSchema = z.iso.datetime({ offset: true }).transform((value, ctx): IsoTime => {
 	if (isIsoTime(value)) return value;
@@ -106,55 +106,95 @@ const checkContextSchema = z.discriminatedUnion("__typename", [
 ]);
 type CheckContext = z.infer<typeof checkContextSchema>;
 
-const pullRequestBaseSchema = z.object({
-	id: z.string(),
-	number: z.number().int().positive(),
-	url: z.string(),
-	title: z.string(),
-	isDraft: z.boolean(),
-	createdAt: isoTimeSchema,
-	repository: z.object({ name: z.string(), owner: z.object({ login: z.string() }) }),
-	author: actorSchema.nullable(),
-	headRefOid: z.string(),
-	baseRefName: z.string(),
-	additions: z.number().int(),
-	deletions: z.number().int(),
-	labels: connection(z.object({ name: z.string() })),
-	files: connection(z.object({ path: z.string() })),
-	reviewDecision: z.enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"]).nullable(),
-	mergeable: z.enum(["MERGEABLE", "CONFLICTING", "UNKNOWN"]),
-	mergeStateStatus: z.enum(["BEHIND", "BLOCKED", "CLEAN", "DIRTY", "DRAFT", "HAS_HOOKS", "UNKNOWN", "UNSTABLE"]),
-	isInMergeQueue: z.boolean(),
-	autoMergeRequest: z.object({}).nullable(),
-	reviewRequests: connection(z.object({ asCodeOwner: z.boolean(), requestedReviewer: requestedReviewerSchema })),
-	latestOpinionatedReviews: connection(reviewSchema),
-	latestReviews: connection(reviewSchema),
-	reviewThreads: connection(threadSchema),
-	timelineItems: connection(timelineItemSchema),
-	commits: connection(
-		z.object({
-			commit: z.object({
-				committedDate: isoTimeSchema,
-				statusCheckRollup: z.object({ contexts: connection(checkContextSchema) }).nullable(),
+const reviewRequestSchema = z.object({ asCodeOwner: z.boolean(), requestedReviewer: requestedReviewerSchema });
+
+/** The node of each connection that feeds the derived state. The source pages each to its end. */
+export const pagedNodeSchemas = {
+	reviewRequests: reviewRequestSchema,
+	latestOpinionatedReviews: reviewSchema,
+	latestReviews: reviewSchema,
+	reviewThreads: threadSchema,
+	checkContexts: checkContextSchema,
+};
+export type PagedConnection = keyof typeof pagedNodeSchemas;
+export type PagedNode<K extends PagedConnection> = z.infer<(typeof pagedNodeSchemas)[K]>;
+
+/** Some of a connection's nodes, and the cursor of the page after them. A null cursor means the nodes are all of them. */
+export interface Page<T> {
+	nodes: T[];
+	after: string | null;
+}
+export type Pages = { [K in PagedConnection]: Page<PagedNode<K>> };
+
+const pullRequestNodeSchema = z
+	.object({
+		id: z.string(),
+		number: z.number().int().positive(),
+		url: z.string(),
+		title: z.string(),
+		state: z.enum(["OPEN", "MERGED", "CLOSED"]),
+		isDraft: z.boolean(),
+		createdAt: isoTimeSchema,
+		closedAt: isoTimeSchema.nullable(),
+		mergedAt: isoTimeSchema.nullable(),
+		repository: z.object({ name: z.string(), owner: z.object({ login: z.string() }) }),
+		author: actorSchema.nullable(),
+		headRefOid: z.string(),
+		baseRefName: z.string(),
+		additions: z.number().int(),
+		deletions: z.number().int(),
+		labels: connection(z.object({ name: z.string() })),
+		files: connection(z.object({ path: z.string() })),
+		reviewDecision: z.enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"]).nullable(),
+		mergeable: z.enum(["MERGEABLE", "CONFLICTING", "UNKNOWN"]),
+		mergeStateStatus: z.enum(["BEHIND", "BLOCKED", "CLEAN", "DIRTY", "DRAFT", "HAS_HOOKS", "UNKNOWN", "UNSTABLE"]),
+		isInMergeQueue: z.boolean(),
+		autoMergeRequest: z.object({}).nullable(),
+		reviewRequests: page(reviewRequestSchema),
+		latestOpinionatedReviews: page(reviewSchema),
+		latestReviews: page(reviewSchema),
+		reviewThreads: page(threadSchema),
+		timelineItems: connection(timelineItemSchema),
+		commits: connection(
+			z.object({
+				commit: z.object({
+					oid: z.string(),
+					committedDate: isoTimeSchema,
+					statusCheckRollup: z.object({ contexts: page(checkContextSchema) }).nullable(),
+				}),
 			}),
-		}),
-	),
-});
+		),
+	})
+	.transform(({ state, mergedAt, closedAt, reviewRequests, latestOpinionatedReviews, latestReviews, reviewThreads, commits, ...pr }, ctx) => {
+		const lifecycle = lifecycleOf(state, mergedAt, closedAt);
+		if (lifecycle === null) {
+			ctx.addIssue({ code: "custom", message: `A ${state} pull request without its timestamp` });
+			return z.NEVER;
+		}
+		const head = commits.at(-1)?.commit ?? null;
+		const pages: Pages = {
+			reviewRequests,
+			latestOpinionatedReviews,
+			latestReviews,
+			reviewThreads,
+			checkContexts: head?.statusCheckRollup?.contexts ?? { nodes: [], after: null },
+		};
+		return { ...pr, lifecycle, headCommittedAt: head?.committedDate ?? pr.createdAt, headOid: head?.oid ?? null, pages };
+	});
 
-export const pullRequestNodeSchema = z.discriminatedUnion("state", [
-	pullRequestBaseSchema.extend({ state: z.literal("OPEN") }),
-	pullRequestBaseSchema.extend({ state: z.literal("MERGED"), mergedAt: isoTimeSchema }),
-	pullRequestBaseSchema.extend({ state: z.literal("CLOSED"), closedAt: isoTimeSchema }),
-]);
-type PullRequestNode = z.infer<typeof pullRequestNodeSchema>;
+/** A pull request as one response holds it. `pages` may stop short of a connection's end; `headOid` is the commit the checks belong to. */
+export type PullRequestNode = z.infer<typeof pullRequestNodeSchema>;
 
-export function parsePullRequest(node: unknown): PrSnapshot {
-	return toSnapshot(pullRequestNodeSchema.parse(node));
+export function parsePullRequestNode(node: unknown): PullRequestNode {
+	return pullRequestNodeSchema.parse(node);
 }
 
-function toSnapshot(pr: PullRequestNode): PrSnapshot {
+/** Throws when a page stops short of its connection's end, so a snapshot never misses a thread, review, request, or check. */
+export function toSnapshot(pr: PullRequestNode): PrSnapshot {
+	const short = Object.entries(pr.pages).filter(([, page]) => page.after !== null).map(([name]) => name);
+	if (short.length > 0) throw new Error(`Pull request ${pr.id} is missing later pages of ${short.join(", ")}`);
+	const { pages } = pr;
 	const latest = latestEventTimes(pr.timelineItems);
-	const lastCommit = pr.commits.at(-1)?.commit ?? null;
 	return {
 		id: asPrId(pr.id),
 		repo: { owner: pr.repository.owner.login, name: pr.repository.name },
@@ -162,20 +202,20 @@ function toSnapshot(pr: PullRequestNode): PrSnapshot {
 		url: pr.url,
 		title: pr.title,
 		author: toPerson(pr.author),
-		lifecycle: lifecycleOf(pr),
+		lifecycle: pr.lifecycle,
 		isDraft: pr.isDraft,
 		createdAt: pr.createdAt,
 		readyAt: latest.get(READY) ?? null,
 		draftedAt: latest.get(DRAFTED) ?? null,
 		headSha: asSha(pr.headRefOid),
-		headCommittedAt: lastCommit?.committedDate ?? pr.createdAt,
+		headCommittedAt: pr.headCommittedAt,
 		baseRef: pr.baseRefName,
 		labels: pr.labels.map((label) => label.name),
 		paths: pr.files.map((file) => file.path),
 		additions: pr.additions,
 		deletions: pr.deletions,
 		reviewDecision: pr.reviewDecision,
-		reviewRequests: pr.reviewRequests.flatMap(({ asCodeOwner, requestedReviewer }): ReviewRequest[] => {
+		reviewRequests: pages.reviewRequests.nodes.flatMap(({ asCodeOwner, requestedReviewer }): ReviewRequest[] => {
 			if (requestedReviewer === null) return [];
 			const requestedAt = latest.get(reviewerKey(requestedReviewer)) ?? null;
 			if (requestedReviewer.__typename === "Team") {
@@ -184,10 +224,10 @@ function toSnapshot(pr: PullRequestNode): PrSnapshot {
 			}
 			return [{ kind: "user", reviewer: toPerson(requestedReviewer), asCodeOwner, requestedAt }];
 		}),
-		decisiveReviews: toReviews(pr.latestOpinionatedReviews, DECISIVE_STATES),
-		latestReviews: toReviews(pr.latestReviews, [...DECISIVE_STATES, "COMMENTED"]),
-		threads: pr.reviewThreads.flatMap(toThread),
-		checks: (lastCommit?.statusCheckRollup?.contexts ?? []).map(toCheck),
+		decisiveReviews: toReviews(pages.latestOpinionatedReviews.nodes, DECISIVE_STATES),
+		latestReviews: toReviews(pages.latestReviews.nodes, [...DECISIVE_STATES, "COMMENTED"]),
+		threads: pages.reviewThreads.nodes.flatMap(toThread),
+		checks: pages.checkContexts.nodes.map(toCheck),
 		mergeable: pr.mergeable,
 		mergeStateStatus: pr.mergeStateStatus,
 		inMergeQueue: pr.isInMergeQueue,
@@ -195,14 +235,19 @@ function toSnapshot(pr: PullRequestNode): PrSnapshot {
 	};
 }
 
-function lifecycleOf(pr: PullRequestNode): Lifecycle {
-	switch (pr.state) {
+export function parsePullRequest(node: unknown): PrSnapshot {
+	return toSnapshot(parsePullRequestNode(node));
+}
+
+/** Null when a merged or closed pull request lacks the time it ended. */
+function lifecycleOf(state: "OPEN" | "MERGED" | "CLOSED", mergedAt: IsoTime | null, closedAt: IsoTime | null): Lifecycle | null {
+	switch (state) {
 		case "OPEN":
 			return { kind: "open" };
 		case "MERGED":
-			return { kind: "merged", at: pr.mergedAt };
+			return mergedAt === null ? null : { kind: "merged", at: mergedAt };
 		case "CLOSED":
-			return { kind: "closed", at: pr.closedAt };
+			return closedAt === null ? null : { kind: "closed", at: closedAt };
 	}
 }
 

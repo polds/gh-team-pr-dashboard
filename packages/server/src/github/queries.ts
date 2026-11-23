@@ -1,11 +1,27 @@
+import type { PagedConnection } from "./snapshot.ts";
 import type { PrRef } from "./source.ts";
 
 const NAME = /^[A-Za-z0-9._-]+$/;
 
 const ACTOR = "{ __typename login avatarUrl }";
-const REVIEWS = `(first: 50) { nodes { state submittedAt author ${ACTOR} commit { oid } } }`;
 const COMMENT = `{ nodes { createdAt author ${ACTOR} } }`;
+const REVIEW_REQUEST = "{ asCodeOwner requestedReviewer { __typename ... on User { login avatarUrl } ... on Bot { login avatarUrl } ... on Mannequin { login avatarUrl } ... on Team { slug name } } }";
+const REVIEW = `{ state submittedAt author ${ACTOR} commit { oid } }`;
+const THREAD = `{ isResolved isOutdated first: comments(first: 1) ${COMMENT} last: comments(last: 1) ${COMMENT} }`;
 
+/** `number` is the pull request number as GraphQL text: a literal or a variable. */
+function checkContext(number: string): string {
+	return `{ __typename ... on CheckRun { name status conclusion completedAt isRequired(pullRequestNumber: ${number}) } ... on StatusContext { context state createdAt isRequired(pullRequestNumber: ${number}) } }`;
+}
+
+function paged(field: string, args: string, node: string): string {
+	return `${field}(${args}) { pageInfo { hasNextPage endCursor } nodes ${node} }`;
+}
+
+/**
+ * The five connections that feed the derived state select `pageInfo`, and the source pages the rest of any
+ * that has more. `labels`, `files`, and the timeline feed only display fields, so their first page is enough.
+ */
 function pullRequestFields(number: number): string {
 	return `
 		id number url title state isDraft createdAt closedAt mergedAt
@@ -16,13 +32,32 @@ function pullRequestFields(number: number): string {
 		files(first: 100) { nodes { path } }
 		reviewDecision mergeable mergeStateStatus isInMergeQueue
 		autoMergeRequest { enabledAt }
-		reviewRequests(first: 30) { nodes { asCodeOwner requestedReviewer { __typename ... on User { login avatarUrl } ... on Bot { login avatarUrl } ... on Mannequin { login avatarUrl } ... on Team { slug name } } } }
-		latestOpinionatedReviews${REVIEWS}
-		latestReviews${REVIEWS}
-		reviewThreads(first: 100) { nodes { isResolved isOutdated first: comments(first: 1) ${COMMENT} last: comments(last: 1) ${COMMENT} } }
+		${paged("reviewRequests", "first: 30", REVIEW_REQUEST)}
+		${paged("latestOpinionatedReviews", "first: 50", REVIEW)}
+		${paged("latestReviews", "first: 50", REVIEW)}
+		${paged("reviewThreads", "first: 100", THREAD)}
 		timelineItems(last: 60, itemTypes: [READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT, REVIEW_REQUESTED_EVENT]) { nodes { __typename ... on ReadyForReviewEvent { createdAt } ... on ConvertToDraftEvent { createdAt } ... on ReviewRequestedEvent { createdAt requestedReviewer { __typename ... on User { login } ... on Bot { login } ... on Mannequin { login } ... on Team { slug } } } } }
-		commits(last: 1) { nodes { commit { oid committedDate statusCheckRollup { state contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion completedAt isRequired(pullRequestNumber: ${number}) } ... on StatusContext { context state createdAt isRequired(pullRequestNumber: ${number}) } } } } } } }`;
+		commits(last: 1) { nodes { commit { oid committedDate statusCheckRollup { ${paged("contexts", "first: 100", checkContext(String(number)))} } } } }`;
 }
+
+const NEXT_PAGE = "first: 100, after: $after";
+
+function pullRequestPageQuery(operation: string, field: string, node: string): string {
+	return `query ${operation}($owner: String!, $name: String!, $number: Int!, $after: String!) {
+	repository(owner: $owner, name: $name) { pullRequest(number: $number) { connection: ${paged(field, NEXT_PAGE, node)} } }
+}`;
+}
+
+/** The page after `$after` of one connection of one pull request. Check contexts are read from the commit the first page named. */
+export const CONNECTION_PAGE_QUERIES = {
+	reviewRequests: pullRequestPageQuery("ReviewRequestsPage", "reviewRequests", REVIEW_REQUEST),
+	latestOpinionatedReviews: pullRequestPageQuery("LatestOpinionatedReviewsPage", "latestOpinionatedReviews", REVIEW),
+	latestReviews: pullRequestPageQuery("LatestReviewsPage", "latestReviews", REVIEW),
+	reviewThreads: pullRequestPageQuery("ReviewThreadsPage", "reviewThreads", THREAD),
+	checkContexts: `query CheckContextsPage($owner: String!, $name: String!, $number: Int!, $oid: GitObjectID!, $after: String!) {
+	repository(owner: $owner, name: $name) { object(oid: $oid) { ... on Commit { statusCheckRollup { connection: ${paged("contexts", NEXT_PAGE, checkContext("$number"))} } } } }
+}`,
+} satisfies Record<PagedConnection, string>;
 
 export function pullRequestAlias(index: number): string {
 	return `p${index}`;
