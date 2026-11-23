@@ -38,10 +38,17 @@ function localDate(instant: number, timeZone: string): number {
 	return wall - (((wall % DAY_MS) + DAY_MS) % DAY_MS);
 }
 
-/** The first instant of the local calendar date `date`, given as the UTC midnight of that date. */
+/**
+ * The first instant of the local calendar date `date`, given as the UTC midnight of that date.
+ * Midnight can occur twice when clocks fall back across it, or never when they spring forward
+ * across it, so each candidate is checked against the offset in force at that instant.
+ */
 function startOfLocalDate(date: number, timeZone: string): number {
-	const guess = date - offsetAt(date, timeZone);
-	return date - offsetAt(guess, timeZone);
+	const before = offsetAt(date - DAY_MS, timeZone);
+	const after = offsetAt(date + DAY_MS, timeZone);
+	if (before === after) return date - before;
+	const candidates = [date - before, date - after].filter((instant) => offsetAt(instant, timeZone) === date - instant);
+	return candidates.length === 0 ? date - before : Math.min(...candidates);
 }
 
 function isWeekday(date: number): boolean {

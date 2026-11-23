@@ -38,6 +38,10 @@ describe("businessHoursBetween", () => {
 		expect(between("2020-03-19T20:30:00Z", "2020-03-21T19:30:00Z", "Asia/Tehran")).toBe(24);
 	});
 
+	it("starts Saturday at the first of two midnights when clocks fall back across it", () => {
+		expect(between("2020-10-23T09:00:00Z", "2020-10-24T10:00:00Z", "Asia/Gaza")).toBe(12);
+	});
+
 	it("is zero when the range is empty or reversed", () => {
 		expect(between("2026-11-02T17:00:00Z", "2026-11-02T17:00:00Z")).toBe(0);
 		expect(between("2026-11-03T17:00:00Z", "2026-11-02T17:00:00Z")).toBe(0);
