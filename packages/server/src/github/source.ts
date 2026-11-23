@@ -4,7 +4,7 @@ import type { Person, PrSnapshot, TeamSlug } from "@radar/core";
 import type { AppAuth } from "./appAuth.ts";
 import { collectPages, connection, graphqlRequest, isNotFound, page } from "./graphql.ts";
 import type { Fetch } from "./http.ts";
-import { ORG_TEAMS_QUERY, OPEN_PR_NUMBERS_QUERY, buildPullRequestsQuery, pullRequestAlias } from "./queries.ts";
+import { ORG_TEAMS_QUERY, OPEN_PULL_REQUESTS_QUERY, buildPullRequestsQuery, pullRequestAlias } from "./queries.ts";
 import { findOrgInstallation, listInstallationRepos } from "./rest.ts";
 import { parsePullRequest } from "./snapshot.ts";
 
@@ -18,6 +18,9 @@ export function refKey(ref: PrRef): string {
 	return `${ref.owner}/${ref.name}#${ref.number}`;
 }
 
+/** An open pull request from the listing. Equal fingerprints mean the cheap fields did not move since the last listing. */
+export type OpenPr = PrRef & { fingerprint: string };
+
 export interface TeamInfo {
 	slug: TeamSlug;
 	name: string;
@@ -25,14 +28,40 @@ export interface TeamInfo {
 }
 
 export interface PullRequestSource {
-	listOpen(): Promise<PrRef[]>;
+	listOpen(): Promise<OpenPr[]>;
 	/** Keyed by `refKey`. Null when the pull request does not exist. A ref that failed to load is absent, so the caller keeps its old data. */
 	fetch(refs: PrRef[]): Promise<Map<string, PrSnapshot | null>>;
 	teams(): Promise<TeamInfo[]>;
 }
 
-const openNumbersSchema = z.object({
-	repository: z.object({ pullRequests: page(z.object({ number: z.number().int().positive() })) }).nullable(),
+const openPullRequestSchema = z
+	.object({
+		number: z.number().int().positive(),
+		updatedAt: z.string(),
+		headRefOid: z.string(),
+		isDraft: z.boolean(),
+		reviewDecision: z.string().nullable(),
+		mergeable: z.string(),
+		mergeStateStatus: z.string(),
+		reviewRequests: z.object({ totalCount: z.number().int() }).nullable(),
+		commits: connection(z.object({ commit: z.object({ statusCheckRollup: z.object({ state: z.string() }).nullable() }) })),
+	})
+	.transform(({ number, reviewRequests, commits, ...fields }) => ({
+		number,
+		fingerprint: JSON.stringify([
+			fields.updatedAt,
+			fields.headRefOid,
+			fields.isDraft,
+			fields.reviewDecision,
+			fields.mergeable,
+			fields.mergeStateStatus,
+			reviewRequests?.totalCount ?? 0,
+			commits.at(-1)?.commit.statusCheckRollup?.state ?? null,
+		]),
+	}));
+
+const openPullRequestsSchema = z.object({
+	repository: z.object({ pullRequests: page(openPullRequestSchema) }).nullable(),
 });
 
 const orgTeamsSchema = z.object({
@@ -48,6 +77,11 @@ const orgTeamsSchema = z.object({
 });
 
 const pullRequestsSchema = z.record(z.string(), z.object({ pullRequest: z.unknown() }).nullable());
+
+export interface GitHubSource extends PullRequestSource {
+	/** The installation token the source itself uses, for the sign-in membership check. */
+	installationToken(): Promise<string>;
+}
 
 export function createGitHubSource({
 	org,
@@ -66,7 +100,7 @@ export function createGitHubSource({
 	batchSize?: number;
 	/** Called once for each ref left out of a `fetch` result, with the error from its last attempt. */
 	onFetchError?: (error: unknown, ref: PrRef) => void;
-}): PullRequestSource {
+}): GitHubSource {
 	const denied = new Set(repoDenylist.map((name) => name.toLowerCase()));
 	let installation: Promise<number> | null = installationId === undefined ? null : Promise.resolve(installationId);
 
@@ -82,19 +116,19 @@ export function createGitHubSource({
 		return appAuth.installationToken(await installationIdOnce());
 	}
 
-	async function openNumbers(owner: string, name: string): Promise<number[]> {
+	async function openPullRequests(owner: string, name: string): Promise<OpenPr[]> {
 		const pulls = await collectPages(async (after) => {
 			const data = await graphqlRequest({
 				token: await token(),
-				query: OPEN_PR_NUMBERS_QUERY,
+				query: OPEN_PULL_REQUESTS_QUERY,
 				variables: { owner, name, after },
-				schema: openNumbersSchema,
+				schema: openPullRequestsSchema,
 				allowErrors: isNotFound,
 				fetch,
 			});
 			return data.repository?.pullRequests ?? { nodes: [], after: null };
 		});
-		return pulls.map((pull) => pull.number);
+		return pulls.map(({ number, fingerprint }) => ({ owner, name, number, fingerprint }));
 	}
 
 	async function fetchBatch(refs: PrRef[]): Promise<[string, PrSnapshot | null][]> {
@@ -129,14 +163,16 @@ export function createGitHubSource({
 	}
 
 	return {
+		installationToken: token,
+
 		async listOpen() {
 			const repos = await listInstallationRepos({ token: await token(), fetch });
-			const refs: PrRef[] = [];
+			const open: OpenPr[] = [];
 			for (const { owner, name, archived } of repos) {
 				if (archived || denied.has(name.toLowerCase())) continue;
-				for (const number of await openNumbers(owner, name)) refs.push({ owner, name, number });
+				open.push(...(await openPullRequests(owner, name)));
 			}
-			return refs;
+			return open;
 		},
 
 		async fetch(refs) {

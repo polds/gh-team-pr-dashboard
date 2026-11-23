@@ -47,11 +47,20 @@ export function buildPullRequestsQuery(refs: readonly PrRef[]): string {
 	return `query PullRequests {\n${blocks.join("\n")}\n}`;
 }
 
-export const OPEN_PR_NUMBERS_QUERY = `query OpenPullRequestNumbers($owner: String!, $name: String!, $after: String) {
+/**
+ * The open pull requests of one repository with the cheap fields that change
+ * when the full snapshot would. The sweep compares them as a fingerprint and
+ * fetches the full snapshot only for pull requests whose fingerprint moved.
+ */
+export const OPEN_PULL_REQUESTS_QUERY = `query OpenPullRequests($owner: String!, $name: String!, $after: String) {
 	repository(owner: $owner, name: $name) {
 		pullRequests(states: OPEN, first: 100, after: $after) {
 			pageInfo { hasNextPage endCursor }
-			nodes { number }
+			nodes {
+				number updatedAt headRefOid isDraft reviewDecision mergeable mergeStateStatus
+				reviewRequests(first: 1) { totalCount }
+				commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+			}
 		}
 	}
 }`;

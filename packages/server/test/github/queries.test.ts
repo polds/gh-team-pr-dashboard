@@ -1,6 +1,6 @@
 import { parse } from "graphql";
 import { describe, expect, it } from "vitest";
-import { OPEN_PR_NUMBERS_QUERY, ORG_TEAMS_QUERY, buildPullRequestsQuery } from "../../src/github/queries.ts";
+import { OPEN_PULL_REQUESTS_QUERY, ORG_TEAMS_QUERY, buildPullRequestsQuery } from "../../src/github/queries.ts";
 import { pullRequestAliases } from "./fakeGitHub.ts";
 
 describe("buildPullRequestsQuery", () => {
@@ -38,7 +38,7 @@ describe("buildPullRequestsQuery", () => {
 });
 
 describe("static queries", () => {
-	it.each([OPEN_PR_NUMBERS_QUERY, ORG_TEAMS_QUERY])("parse as GraphQL", (query) => {
+	it.each([OPEN_PULL_REQUESTS_QUERY, ORG_TEAMS_QUERY])("parse as GraphQL", (query) => {
 		expect(() => parse(query)).not.toThrow();
 	});
 });

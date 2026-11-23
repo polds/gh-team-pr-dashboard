@@ -28,7 +28,22 @@ const OPEN_NUMBERS: Record<string, Record<string, { numbers: number[]; after: st
 	web: { start: { numbers: [7], after: null } },
 };
 
-function openNumbersPage(name: string, after: unknown) {
+function openPullRequestNode(number: number, changes: Record<string, unknown> = {}) {
+	return {
+		number,
+		updatedAt: "2026-11-04T10:00:00Z",
+		headRefOid: "abc",
+		isDraft: false,
+		reviewDecision: null,
+		mergeable: "MERGEABLE",
+		mergeStateStatus: "CLEAN",
+		reviewRequests: { totalCount: 1 },
+		commits: { nodes: [{ commit: { statusCheckRollup: { state: "PENDING" } } }] },
+		...changes,
+	};
+}
+
+function openPullRequestsPage(name: string, after: unknown, nodes: (number: number) => unknown = openPullRequestNode) {
 	const pages = OPEN_NUMBERS[name];
 	const pageEntry = pages?.[typeof after === "string" ? after : "start"];
 	if (pages === undefined || pageEntry === undefined) {
@@ -39,7 +54,7 @@ function openNumbersPage(name: string, after: unknown) {
 			repository: {
 				pullRequests: {
 					pageInfo: { hasNextPage: pageEntry.after !== null, endCursor: pageEntry.after },
-					nodes: pageEntry.numbers.map((number) => ({ number })),
+					nodes: pageEntry.numbers.map(nodes),
 				},
 			},
 		},
@@ -58,7 +73,11 @@ const TEAM_PAGES: Record<string, unknown> = {
 };
 
 /** A fake GitHub that knows the open pull requests in `existing` and answers 502 to any query that asks for a ref in `broken`. */
-function fakeGitHub({ existing = [] as PrRef[], broken = [] as PrRef[] } = {}) {
+function fakeGitHub({
+	existing = [] as PrRef[],
+	broken = [] as PrRef[],
+	listing = openPullRequestNode as (number: number) => unknown,
+} = {}) {
 	const existingKeys = new Set(existing.map(refKey));
 	const brokenKeys = new Set(broken.map(refKey));
 	return fakeFetch((request: SentRequest) => {
@@ -72,7 +91,7 @@ function fakeGitHub({ existing = [] as PrRef[], broken = [] as PrRef[] } = {}) {
 		}
 		if (request.url !== "https://api.github.com/graphql") return new Response("not found", { status: 404 });
 		const { query, variables } = graphqlBody(request);
-		if (query.startsWith("query OpenPullRequestNumbers")) return openNumbersPage(String(variables.name), variables.after);
+		if (query.startsWith("query OpenPullRequests")) return openPullRequestsPage(String(variables.name), variables.after, listing);
 		if (query.startsWith("query OrganizationTeams")) {
 			return json({ data: { organization: { teams: TEAM_PAGES[typeof variables.after === "string" ? variables.after : "start"] } } });
 		}
@@ -113,7 +132,8 @@ describe("createGitHubSource", () => {
 	it("lists open pull requests across pages, skipping archived, denylisted, and vanished repositories", async () => {
 		const github = fakeGitHub();
 		const { radar } = source(github);
-		await expect(radar.listOpen()).resolves.toEqual([
+		const open = await radar.listOpen();
+		expect(open.map(({ fingerprint: _fingerprint, ...ref }) => ref)).toEqual([
 			{ owner: "acme", name: "api", number: 1 },
 			{ owner: "acme", name: "api", number: 2 },
 			{ owner: "acme", name: "api", number: 3 },
@@ -128,12 +148,38 @@ describe("createGitHubSource", () => {
 		]);
 	});
 
+	it.each([
+		["updatedAt", { updatedAt: "2026-11-04T11:00:00Z" }],
+		["headRefOid", { headRefOid: "def" }],
+		["isDraft", { isDraft: true }],
+		["reviewDecision", { reviewDecision: "APPROVED" }],
+		["mergeable", { mergeable: "CONFLICTING" }],
+		["mergeStateStatus", { mergeStateStatus: "BLOCKED" }],
+		["the review request count", { reviewRequests: { totalCount: 2 } }],
+		["the check rollup state", { commits: { nodes: [{ commit: { statusCheckRollup: { state: "SUCCESS" } } }] } }],
+	])("moves the fingerprint when %s changes and keeps it otherwise", async (_label, changes) => {
+		const fingerprints = async (listing: (number: number) => unknown) =>
+			(await source(fakeGitHub({ listing })).radar.listOpen()).map((pr) => pr.fingerprint);
+		const before = await fingerprints((number) => openPullRequestNode(number));
+		const again = await fingerprints((number) => openPullRequestNode(number));
+		const after = await fingerprints((number) => openPullRequestNode(number, number === 2 ? changes : {}));
+		expect(again).toEqual(before);
+		expect(after.filter((fingerprint, index) => fingerprint !== before[index])).toHaveLength(1);
+		expect(after[1]).not.toBe(before[1]);
+	});
+
+	it("reads a pull request with no commits and no rollup", async () => {
+		const github = fakeGitHub({ listing: (number) => openPullRequestNode(number, { commits: { nodes: [] }, reviewRequests: null }) });
+		await expect(source(github).radar.listOpen()).resolves.toHaveLength(4);
+	});
+
 	it("looks the installation up once and uses its token", async () => {
 		const github = fakeGitHub({ existing: [{ owner: "acme", name: "api", number: 1 }] });
 		const { radar, appAuth } = source(github);
 		await radar.listOpen();
 		await radar.fetch([{ owner: "acme", name: "api", number: 1 }]);
 		await radar.teams();
+		await expect(radar.installationToken()).resolves.toBe("ghs_installation");
 		expect(github.requests.filter((request) => request.url.endsWith("/orgs/acme/installation"))).toHaveLength(1);
 		expect(new Set(appAuth.tokensFor)).toEqual(new Set([INSTALLATION_ID]));
 		expect(github.requests.every((request) => request.url.endsWith("/installation") || request.headers.get("authorization") === "Bearer ghs_installation")).toBe(true);
