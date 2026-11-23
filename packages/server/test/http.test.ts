@@ -98,7 +98,7 @@ function harness({
 	const getBoard = async (login = "ana") => jsonOf<BoardResponse>(await app.request("/api/board", { headers: { Cookie: cookie(login) } }));
 	const signal = async (kind: string, login = "ana", id: string = likelyReadyPr.id) =>
 		jsonOf<AuthorSignalResponse>(await post(`/api/prs/${id}/signal`, { kind }, login));
-	return { app, board, hub, marks, rerequests, cookie, post, getBoard, signal, webDist, logger, cleanup: () => rmSync(webDist, { recursive: true, force: true }) };
+	return { app, board, hub, marks, rerequests, sessions, cookie, post, getBoard, signal, webDist, logger, cleanup: () => rmSync(webDist, { recursive: true, force: true }) };
 }
 
 const sign = (body: string) => `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex")}`;
@@ -243,12 +243,25 @@ describe("HTTP app", () => {
 
 		it("keeps the user's GitHub token out of the session while the re-request is off", async () => {
 			h = harness({ config: { rerequestEnabled: false } });
-			expect(await sessionAfterSignIn(h.app)).toMatchObject({ login: "ana", userToken: "" });
+			expect(await sessionAfterSignIn(h.app)).toMatchObject({ login: "ana", userToken: null });
 		});
 
 		it("keeps the user's GitHub token in the session when the re-request is on, because that write needs it", async () => {
 			h = harness({ config: { rerequestEnabled: true } });
 			expect(await sessionAfterSignIn(h.app)).toMatchObject({ login: "ana", userToken: "ghu_user_token" });
+		});
+
+		it("sends the author back to sign-in when the re-request was turned on after their session began", async () => {
+			h = harness({ config: { rerequestEnabled: true } });
+			const tokenless = h.sessions.seal({ login: asLogin("ana"), avatarUrl: "", name: null, userToken: null, expiresAt: Date.now() + 3_600_000 });
+			const response = await h.app.request(`/api/prs/${encodeURIComponent(likelyReadyPr.id)}/signal`, {
+				method: "POST",
+				headers: { Cookie: `${SESSION_COOKIE}=${tokenless}`, "X-Radar": "1", "Content-Type": "application/json" },
+				body: JSON.stringify({ kind: "ready" }),
+			});
+			expect(response.status).toBe(401);
+			expect(await response.json()).toEqual({ error: "unauthenticated", loginUrl: "/auth/login" });
+			expect(h.rerequests).toEqual([]);
 		});
 
 		it("refuses a callback whose state does not match the cookie", async () => {

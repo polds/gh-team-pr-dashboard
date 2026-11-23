@@ -7,8 +7,8 @@ export interface Session {
 	login: Login;
 	avatarUrl: string;
 	name: string | null;
-	/** The signed-in user's GitHub token. Empty in demo mode. */
-	userToken: string;
+	/** Null unless the one-click re-request is on, which is the only use of the token. */
+	userToken: string | null;
 	/** Epoch milliseconds. */
 	expiresAt: number;
 }
@@ -28,11 +28,10 @@ const sessionSchema = z.object({
 	login: z.string().min(1).transform(asLogin),
 	avatarUrl: z.string(),
 	name: z.string().nullable(),
-	userToken: z.string(),
+	userToken: z.string().nullable(),
 	expiresAt: z.number(),
 });
 
-/** AES-256-GCM over the session JSON, with the key derived from the configured secret by HKDF-SHA256. */
 export function createSessionCodec(secret: string): SessionCodec {
 	const key = Buffer.from(hkdfSync("sha256", secret, "pr-review-radar", "session cookie v1", 32));
 
@@ -60,7 +59,6 @@ export function createSessionCodec(secret: string): SessionCodec {
 	};
 }
 
-/** Eight hours, or the token's own lifetime when that is shorter. */
 export function sessionExpiry(now: Date, tokenLifetimeSeconds: number | null): number {
 	const limit = now.getTime() + SESSION_HOURS * 3_600_000;
 	return tokenLifetimeSeconds === null ? limit : Math.min(limit, now.getTime() + tokenLifetimeSeconds * 1000);

@@ -61,6 +61,8 @@ export type AppDeps = CommonDeps &
 
 type App = Hono<{ Variables: { session: Session } }>;
 
+const UNAUTHENTICATED = { error: "unauthenticated", loginUrl: "/auth/login" } as const;
+
 const RESERVED_PREFIXES = ["/api", "/auth", "/webhooks", "/demo", "/healthz"];
 
 const isReserved = (path: string) => RESERVED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
@@ -113,7 +115,7 @@ export function createApp(deps: AppDeps): App {
 		if (c.req.method === "POST" && c.req.header("x-radar") !== "1") return c.json({ error: "missing_x_radar_header" }, 403);
 		const cookie = getCookie(c, SESSION_COOKIE);
 		const session = cookie === undefined ? null : sessions.open(cookie, clock.now());
-		if (session === null) return c.json({ error: "unauthenticated", loginUrl: "/auth/login" }, 401);
+		if (session === null) return c.json(UNAUTHENTICATED, 401);
 		c.set("session", session);
 		await next();
 	});
@@ -177,6 +179,7 @@ export function createApp(deps: AppDeps): App {
 					.filter((reviewer) => reviewer.kind === "feedback_addressed" || reviewer.kind === "feedback_outstanding")
 					.map((reviewer) => reviewer.reviewer.login);
 				if (logins.length === 0) return answer({ ok: false, error: "nothing_to_rerequest" });
+				if ("github" in deps && session.userToken === null) return c.json(UNAUTHENTICATED, 401);
 				try {
 					await requester.requestReviewers({ ref: held.ref, logins, userToken: session.userToken });
 				} catch (error) {
@@ -234,7 +237,7 @@ export function createApp(deps: AppDeps): App {
 				if (!member) {
 					return page(c, 403, "Not a member", `<p>PR Review Radar is open to members of the ${escapeHtml(config.org)} organization on GitHub.</p>`);
 				}
-				const userToken = config.rerequestEnabled ? token.accessToken : "";
+				const userToken = config.rerequestEnabled ? token.accessToken : null;
 				setSession(c, { ...user, userToken, expiresAt: sessionExpiry(clock.now(), token.expiresInSeconds) });
 				return c.redirect("/", 302);
 			} catch (error) {
@@ -276,7 +279,7 @@ export function createApp(deps: AppDeps): App {
 			const person = [...people.values()].find((candidate) => candidate.login === c.req.query("login") && !candidate.isBot);
 			if (person === undefined) return page(c, 404, "No such demo person", '<p><a href="/auth/login">Pick someone else</a>.</p>');
 			const now = clock.now();
-			setSession(c, { login: person.login, avatarUrl: person.avatarUrl, name: null, userToken: "", expiresAt: now.getTime() + SESSION_HOURS * 3_600_000 });
+			setSession(c, { login: person.login, avatarUrl: person.avatarUrl, name: null, userToken: null, expiresAt: now.getTime() + SESSION_HOURS * 3_600_000 });
 			return c.redirect("/", 302);
 		});
 

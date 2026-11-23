@@ -3,13 +3,15 @@ import type { Fetch } from "./github/http.ts";
 import { requestReviewers } from "./github/rest.ts";
 import type { PrRef } from "./github/source.ts";
 
-/** Radar's one write to GitHub: the author re-requests review, with the author's own token. */
 export interface ReviewRequester {
-	requestReviewers(input: { ref: PrRef; logins: Login[]; userToken: string }): Promise<void>;
+	requestReviewers(input: { ref: PrRef; logins: Login[]; userToken: string | null }): Promise<void>;
 }
 
 export function createGitHubRequester({ fetch = globalThis.fetch }: { fetch?: Fetch } = {}): ReviewRequester {
 	return {
-		requestReviewers: ({ ref, logins, userToken }) => requestReviewers({ token: userToken, ref, logins, fetch }),
+		async requestReviewers({ ref, logins, userToken }) {
+			if (userToken === null) throw new Error("the session holds no user token");
+			await requestReviewers({ token: userToken, ref, logins, fetch });
+		},
 	};
 }
