@@ -5,9 +5,9 @@ export type Connection = "live" | "reconnecting";
 export type Celebration = Extract<ServerEvent, { kind: "celebrate" }>;
 
 /** The board response minus the parts that live events change. */
-export type BoardMeta = Omit<BoardResponse, "cards" | "presence">;
+type BoardMeta = Omit<BoardResponse, "cards" | "presence">;
 
-export type Phase =
+type Phase =
 	| { status: "loading" }
 	| { status: "signed_out"; loginUrl: string }
 	| { status: "error"; message: string }
@@ -129,8 +129,4 @@ function clockOffset(serverTime: string, receivedAtMs: number): number {
 
 function shared(state: ClientState): Pick<ClientState, "connection" | "toasts" | "inFlight"> {
 	return { connection: state.connection, toasts: state.toasts, inFlight: state.inFlight };
-}
-
-export function cardList(state: ClientState): Card[] {
-	return state.status === "ready" ? [...state.cards.values()] : [];
 }

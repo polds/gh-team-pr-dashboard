@@ -119,6 +119,9 @@ function ReadyBoard({ state, dispatch }: { state: ReadyState; dispatch: Dispatch
 
 	useEffect(() => {
 		document.title = needsYou === 0 ? PRODUCT : `(${needsYou}) ${PRODUCT}`;
+		return () => {
+			document.title = PRODUCT;
+		};
 	}, [needsYou]);
 
 	const others = useMemo(() => (presenceOn ? presence.filter((entry) => entry.person.login !== viewer.login) : []), [presence, presenceOn, viewer.login]);
@@ -174,7 +177,9 @@ function ReadyBoard({ state, dispatch }: { state: ReadyState; dispatch: Dispatch
 					<section id="board" className="board" aria-labelledby="board-title" tabIndex={-1}>
 						<div className="board-head">
 							<h2 id="board-title">Everyone's pull requests</h2>
-							<FilterBar filters={filters} options={options} org={config.org} viewer={viewer} shown={shown.length} total={all.length} onChange={setFilters} />
+							{all.length > 0 && (
+								<FilterBar filters={filters} options={options} org={config.org} viewer={viewer} shown={shown.length} total={all.length} onChange={setFilters} />
+							)}
 						</div>
 						{all.length === 0 ? (
 							<p className="board-empty">

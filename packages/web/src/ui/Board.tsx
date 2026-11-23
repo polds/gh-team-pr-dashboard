@@ -1,6 +1,6 @@
 import { LANES } from "@radar/core";
 import type { Card, layoutBoard } from "@radar/core";
-import { formatAgo } from "../format.ts";
+import { formatAgo, shortRepo } from "../format.ts";
 import { COURT_TEXT, STATE_LABEL } from "../labels.ts";
 import { CardView } from "./CardView.tsx";
 import { CardList } from "./Mine.tsx";
@@ -82,7 +82,7 @@ function Group({ title, testId, cards, empty }: { title: string; testId: string;
 }
 
 function Done({ cards }: { cards: Card[] }) {
-	const { now } = useRadar();
+	const { now, config } = useRadar();
 	return (
 		<section className="done" data-testid="done" aria-labelledby="done-title">
 			<h3 id="done-title" className="done-title">
@@ -104,7 +104,7 @@ function Done({ cards }: { cards: Card[] }) {
 							{card.derived.state === "merged" ? <MergedIcon size={14} label="Merged" /> : <ClosedIcon size={14} label="Closed" />}
 							<a href={card.url} target="_blank" rel="noopener noreferrer">
 								<span className="card-ref">
-									{card.repo}#{card.number}
+									{shortRepo(card.repo, config.org)}#{card.number}
 								</span>{" "}
 								{card.title}
 							</a>

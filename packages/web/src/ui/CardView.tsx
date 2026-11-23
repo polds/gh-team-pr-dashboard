@@ -14,7 +14,9 @@ export function CardView({ card, variant = "lane" }: { card: Card; variant?: Car
 	const { derived } = card;
 	const ref = `${card.repo}#${card.number}`;
 	const shortRef = `${shortRepo(card.repo, env.config.org)}#${card.number}`;
-	const yours = derived.actors.some((actor) => actor.login === env.viewer.login);
+	const route = derived.actors.find((actor) => actor.login === env.viewer.login)?.via.kind;
+	const yours = route === "author" || route === "direct";
+	const turnText = yours ? "Your move" : route === "team" ? "Your team's move" : COURT_TEXT[derived.court].card;
 	const waitedMs = env.now.getTime() - Date.parse(card.since);
 	const showState = variant !== "lane";
 
@@ -84,7 +86,7 @@ export function CardView({ card, variant = "lane" }: { card: Card; variant?: Car
 				<Watchers card={card} />
 				<span className={`turn${yours ? " turn-yours" : ""}`}>
 					<span className="court-dot" aria-hidden="true" />
-					{yours ? "Your move" : COURT_TEXT[derived.court].card}
+					{turnText}
 					<span className="turn-sep" aria-hidden="true">
 						·
 					</span>

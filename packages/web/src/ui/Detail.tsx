@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import type { Card } from "@radar/core";
 import { explain, explainBlocker } from "../explain.ts";
-import { formatDuration, formatDurationLong } from "../format.ts";
+import { formatDuration, formatDurationLong, shortRepo } from "../format.ts";
 import { CONFIDENCE_TEXT, COURT_TEXT, STATE_LABEL, reviewerStatusText, viaText } from "../labels.ts";
 import { Avatar } from "./Avatar.tsx";
 import { AuthorSignal, ChecksBadge } from "./CardView.tsx";
@@ -14,8 +14,10 @@ import { CrossIcon, ExternalIcon, ReviewerMark, SparkIcon } from "./icons.tsx";
  * and closes on Escape; on close, focus goes back to where it was.
  */
 export function Detail({ card, onClose }: { card: Card | undefined; onClose(): void }) {
+	const { config } = useRadar();
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const onCloseRef = useRef(onClose);
+	const openedFor = useRef(card === undefined ? null : `${card.repo}#${card.number}`);
 
 	useEffect(() => {
 		onCloseRef.current = onClose;
@@ -24,14 +26,16 @@ export function Detail({ card, onClose }: { card: Card | undefined; onClose(): v
 	useEffect(() => {
 		const dialog = dialogRef.current;
 		if (dialog === null) return;
-		const returnTo = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+		const focused = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+		const pr = openedFor.current;
+		const returnTo = () => focused ?? (pr === null ? null : document.querySelector<HTMLElement>(`[data-pr="${CSS.escape(pr)}"] .card-open`));
 		dialog.showModal();
 		const closed = () => onCloseRef.current();
 		dialog.addEventListener("close", closed);
 		return () => {
 			dialog.removeEventListener("close", closed);
 			if (dialog.open) dialog.close();
-			returnTo?.focus();
+			returnTo()?.focus();
 		};
 	}, []);
 
@@ -47,7 +51,7 @@ export function Detail({ card, onClose }: { card: Card | undefined; onClose(): v
 		>
 			<div className="detail-inner">
 				<div className="detail-top">
-					<span className="detail-ref">{card === undefined ? "Pull request" : `${card.repo}#${card.number}`}</span>
+					<span className="detail-ref">{card === undefined ? "Pull request" : `${shortRepo(card.repo, config.org)}#${card.number}`}</span>
 					<button type="button" className="icon-button" aria-label="Close details" onClick={() => dialogRef.current?.close()} autoFocus>
 						<CrossIcon size={16} />
 					</button>

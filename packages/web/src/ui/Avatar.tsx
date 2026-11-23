@@ -13,7 +13,7 @@ export function Avatar({ person, size = 20, alt, children }: { person: Pick<Pers
 					{person.login.slice(0, 2).toUpperCase()}
 				</span>
 			) : (
-				<img src={person.avatarUrl} alt={label} width={size} height={size} loading="lazy" decoding="async" onError={() => setFailed(true)} />
+				<img src={person.avatarUrl} alt={label} width={size} height={size} decoding="async" onError={() => setFailed(true)} />
 			)}
 			{children}
 		</span>

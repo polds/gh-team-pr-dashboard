@@ -171,7 +171,7 @@ export function parseSignalResponse(value: unknown): AuthorSignalResponse | null
  * Sentence-level variants such as reason kinds are not checked here: their renderers fall back
  * to a generic sentence, so a newer server cannot break an open tab.
  */
-export function isCard(value: unknown): value is Card {
+function isCard(value: unknown): value is Card {
 	if (!isObject(value)) return false;
 	const { derived, checks, helpWanted } = value;
 	return (

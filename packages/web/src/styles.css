@@ -595,6 +595,7 @@ select {
 
 .page {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 20px;
 	padding: 16px 20px 28px;
 }
@@ -804,7 +805,9 @@ select {
 }
 
 .lanes {
+	position: relative;
 	display: grid;
+	min-width: 0;
 	grid-auto-flow: column;
 	grid-auto-columns: minmax(196px, 1fr);
 	gap: 8px;
@@ -953,6 +956,7 @@ select {
 /* Card */
 
 .card {
+	position: relative;
 	display: grid;
 	gap: 6px;
 	min-width: 0;
@@ -963,6 +967,7 @@ select {
 	background: var(--surface);
 	box-shadow: var(--shadow-1);
 	cursor: pointer;
+	container-type: inline-size;
 	animation: card-in 240ms ease-out both;
 }
 .card:hover {
@@ -1110,6 +1115,14 @@ select {
 }
 .heuristic-confidence::before {
 	content: "· ";
+}
+@container (max-width: 300px) {
+	.heuristic-confidence {
+		flex-basis: 100%;
+	}
+	.heuristic-confidence::before {
+		content: none;
+	}
 }
 .reasons {
 	display: grid;
