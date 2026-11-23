@@ -1,0 +1,5 @@
+ts	phase	decision	why	evidence	result
+2026-11-23T06:24:14Z	setup	checked that pstack works in this session before doing anything else	the user said to stop if it did not	~/.claude/plugins/installed_plugins.json, agent types pstack:poteto-agent and pstack:comment-sicko listed	works, env setup script already installs it
+2026-11-23T06:24:14Z	setup	added .claude/settings.json with the cursor-plugins marketplace and pstack enabled	so a session in any environment gets pstack from the repo itself	.claude/settings.json	claude plugin list shows pstack enabled
+2026-11-23T06:24:14Z	spike	read the brief by rendering the page in headless chromium	a plain fetch returned only an error shell because the brief sits in a sandboxed iframe	docs/brief.txt	full brief text saved
+2026-11-23T06:24:14Z	design	chose webhook-as-hint plus refetch over applying webhook payloads to stored records	one code path builds state so webhook and reconcile cannot disagree, and duplicate or late events are harmless	docs/design.md	open until built
