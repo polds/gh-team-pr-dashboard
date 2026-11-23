@@ -141,8 +141,8 @@ export function createApp(deps: AppDeps): App {
 
 	app.get(
 		"/api/events",
-		() =>
-			new Response(hub.open(), {
+		(c) =>
+			new Response(hub.open(c.get("session").expiresAt), {
 				headers: {
 					"Content-Type": "text/event-stream; charset=utf-8",
 					"Cache-Control": "no-cache, no-transform",

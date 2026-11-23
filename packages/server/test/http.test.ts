@@ -363,6 +363,24 @@ describe("HTTP app", () => {
 			await reader.cancel();
 			expect(h.hub.subscribers()).toBe(0);
 		});
+
+		it("ends the stream when the session that opened it expires", async () => {
+			vi.useFakeTimers({ now: NOW });
+			try {
+				h = harness({ prs: [] });
+				const response = await h.app.request("/api/events", { headers: { Cookie: h.cookie("ana") } });
+				const reader = response.body?.getReader();
+				if (reader === undefined) throw new Error("no body");
+				await vi.advanceTimersByTimeAsync(3_600_000);
+				expect(h.hub.subscribers()).toBe(0);
+				for (const event of h.board.apply(refOf(requestedPr), requestedPr, NOW)) h.hub.broadcast(event);
+				let text = "";
+				for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) text += new TextDecoder().decode(chunk.value);
+				expect(text).not.toContain("event: card");
+			} finally {
+				vi.useRealTimers();
+			}
+		});
 	});
 
 	describe("web build", () => {

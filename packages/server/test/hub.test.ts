@@ -22,7 +22,7 @@ describe("createHub", () => {
 
 	it("starts each stream with resync, then sends broadcasts and a keep-alive comment", async () => {
 		const hub = createHub({ clock: systemClock });
-		const reader = hub.open().getReader();
+		const reader = hub.open(Date.now() + 3_600_000).getReader();
 		expect(await readChunk(reader)).toBe('event: resync\ndata: {"kind":"resync"}\n\n');
 		hub.broadcast({ kind: "remove", id: asPrId("PR_1") });
 		expect(await readChunk(reader)).toBe('event: remove\ndata: {"kind":"remove","id":"PR_1"}\n\n');
@@ -34,11 +34,36 @@ describe("createHub", () => {
 
 	it("forgets a stream the client cancelled", async () => {
 		const hub = createHub({ clock: systemClock });
-		const stream = hub.open();
+		const stream = hub.open(Date.now() + 3_600_000);
 		expect(hub.subscribers()).toBe(1);
 		await stream.cancel();
 		expect(hub.subscribers()).toBe(0);
 		hub.close();
+	});
+
+	it("ends a stream when its session expires, and sends it nothing after", async () => {
+		const hub = createHub({ clock: systemClock, keepAliveMs: 3_600_000 });
+		const reader = hub.open(Date.now() + 60_000).getReader();
+		expect(await readChunk(reader)).toBe('event: resync\ndata: {"kind":"resync"}\n\n');
+		await vi.advanceTimersByTimeAsync(59_999);
+		expect(hub.subscribers()).toBe(1);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(hub.subscribers()).toBe(0);
+		hub.broadcast({ kind: "remove", id: asPrId("PR_1") });
+		await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
+		hub.close();
+	});
+
+	it("leaves no timer behind for a cancelled stream or a closed hub", async () => {
+		const hub = createHub({ clock: systemClock });
+		const idle = vi.getTimerCount();
+		await hub.open(Date.now() + 60_000).cancel();
+		expect(vi.getTimerCount()).toBe(idle);
+		const reader = hub.open(Date.now() + 60_000).getReader();
+		hub.close();
+		expect(vi.getTimerCount()).toBe(0);
+		expect(await readChunk(reader)).toBe('event: resync\ndata: {"kind":"resync"}\n\n');
+		await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
 	});
 });
 
