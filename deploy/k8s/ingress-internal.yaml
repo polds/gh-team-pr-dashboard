@@ -1,11 +1,18 @@
-# The board. Reachable only from inside the network.
+# The board. Reachable only from inside the network, over HTTPS only.
+# Sign-in needs HTTPS: the session cookie is marked Secure because RADAR_BASE_URL is an https URL.
+# Create the certificate secret before you apply this file. See "TLS" in docs/runbook.md.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: radar-internal
   annotations:
     kubernetes.io/ingress.class: gce-internal
+    kubernetes.io/ingress.allow-http: "false"
 spec:
+  tls:
+    - hosts:
+        - radar.internal.example.com
+      secretName: radar-internal-tls
   rules:
     - host: radar.internal.example.com
       http:

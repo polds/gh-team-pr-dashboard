@@ -108,6 +108,19 @@ kubectl -n pr-review-radar create secret generic radar-secrets \
 
 The Deployment runs one replica with the `Recreate` strategy. Do not raise the replica count. The board lives in the memory of one process.
 
+### TLS
+
+Both hosts must serve HTTPS. Sign-in fails over plain HTTP, because the browser does not send the `Secure` session cookie back.
+
+- The internal ingress reads its certificate from a Secret named `radar-internal-tls`. Create it from a certificate that your internal certificate authority issued for the board's host.
+
+	```
+	kubectl -n pr-review-radar create secret tls radar-internal-tls --cert=radar.crt --key=radar.key
+	```
+
+	An internal HTTPS load balancer on GKE also needs a proxy-only subnet in the cluster's region.
+- The webhook ingress uses a Google-managed certificate for the webhook host. Point the host's DNS record at the ingress address. Google issues the certificate after the record resolves, which can take up to an hour.
+
 ### Webhook exposure
 
 GitHub must reach `/webhooks/github` from the internet. `deploy/k8s/ingress-webhook.yaml` exposes that one path. Attach a Cloud Armor policy that allows only the `hooks` address ranges from `https://api.github.com/meta`.
