@@ -1,15 +1,12 @@
 // End-to-end check of the real server and the built web client against the simulated organization.
 // Usage: node scripts/verify-demo.mjs [screenshot-dir]
-// Needs `npm run build` first. Uses the Playwright that is installed on the machine.
+// Needs `npm run build` first. `npm run verify:demo` does both.
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
-const require = createRequire(import.meta.url);
-const { chromium } = require("playwright");
+import { chromium } from "playwright";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const shots = process.argv[2] ? resolve(process.argv[2]) : null;

@@ -19,6 +19,8 @@ jobs:
       - run: npm test
       - run: npm run check:schema
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/verify-demo.mjs
   image:
     runs-on: ubuntu-latest
     steps:

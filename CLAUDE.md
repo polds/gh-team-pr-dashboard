@@ -22,9 +22,13 @@ A live, shared board of every open pull request in one GitHub organization, with
 npm install
 npm test            # unit tests for every package
 npm run typecheck
+npm run check:schema  # validate every GraphQL query against GitHub's public schema
 npm run dev:demo    # server and web against the simulated source, no GitHub needed
 npm run build
+npm run verify:demo # build, then drive the real server and client in a browser
 ```
+
+Run `npm run verify:demo` before you call a change to the board, the pipeline, or the client done. Unit tests do not show that a change reaches every viewer.
 
 ## pstack
 
