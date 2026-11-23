@@ -39,14 +39,14 @@ describe("createStore", () => {
 
 	it("keeps signals, state entries, and counters across a restart", () => {
 		const store = open();
-		store.setSignal(PR, { kind: "not_ready", headSha: asSha("abc") });
+		store.setSignal(PR, { kind: "not_ready", headSha: asSha("abc"), at: SINCE });
 		store.setStateEntry(PR, { state: "changes_requested", since: SINCE });
 		store.count("confirmed");
 		store.count("rejected");
 		store.count("confirmed");
 		store.flush();
 		const reopened = open();
-		expect(reopened.signal(PR)).toEqual({ kind: "not_ready", headSha: "abc" });
+		expect(reopened.signal(PR)).toEqual({ kind: "not_ready", headSha: "abc", at: SINCE });
 		expect(reopened.stateEntry(PR)).toEqual({ state: "changes_requested", since: SINCE });
 		expect(reopened.heuristic()).toEqual({ confirmed: 2, rejected: 1 });
 	});
@@ -76,7 +76,7 @@ describe("createStore", () => {
 
 	it("forgets one pull request and retains only the given ones", () => {
 		const store = open();
-		store.setSignal(PR, { kind: "ready", headSha: asSha("abc") });
+		store.setSignal(PR, { kind: "ready", headSha: asSha("abc"), at: SINCE });
 		store.setStateEntry(PR, { state: "likely_ready_for_rereview", since: SINCE });
 		store.setStateEntry(OTHER, { state: "draft", since: SINCE });
 		store.forget(PR);

@@ -193,10 +193,14 @@ export interface Derived {
 	confidence: Confidence | null;
 }
 
-/** A signal the author sent from the card. It applies only while the head SHA matches. */
+/**
+ * A signal the author sent from the card. It applies only while the head SHA matches.
+ * A `ready` signal stops covering a reviewer who gives feedback after `at`.
+ */
 export interface AuthorSignal {
 	kind: "ready" | "not_ready";
 	headSha: Sha;
+	at: IsoTime;
 }
 
 export interface DeriveContext {

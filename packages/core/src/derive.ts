@@ -23,12 +23,12 @@ import type {
 } from "./model.ts";
 
 type UserRequest = Extract<ReviewRequest, { kind: "user" }>;
-type Signal = AuthorSignal["kind"] | null;
+type Signal = Pick<AuthorSignal, "kind" | "at"> | null;
 
 export function derive(snapshot: PrSnapshot, context: DeriveContext): Derived {
-	const signal = context.authorSignal?.headSha === snapshot.headSha ? context.authorSignal.kind : null;
+	const signal = context.authorSignal?.headSha === snapshot.headSha ? context.authorSignal : null;
 	const reviewers = reviewerFactsOf(snapshot, signal).flatMap((facts) => assess(facts) ?? []);
-	const facts = foldFactsOf(snapshot, reviewers, signal);
+	const facts = foldFactsOf(snapshot, reviewers, signal?.kind ?? null);
 	const outcome = fold(facts);
 	const sinceEstimate = STATE_SINCE[outcome.state](facts, outcome);
 	return {
@@ -194,14 +194,16 @@ function feedbackOf(r: Omit<ReviewerFacts, "feedback">, signal: Signal): Feedbac
 	const authorActed = headMoved || (changeRequest === null && (authorReplies.length > 0 || everyThreadResolved));
 	const awaitingAuthor = r.threads.filter((_, i) => states[i] === "open" || states[i] === "outdated");
 	const estimated = (changeRequest !== null && r.threads.length === 0) || counts.outdated > 0 ? "medium" : "high";
+	const reviewerSpokeAt = latest(givenAt, r.threads.filter((t) => t.lastCommentBy.login !== author).map((t) => t.lastCommentAt));
+	const said = signal !== null && (signal.kind === "not_ready" || Date.parse(reviewerSpokeAt) <= Date.parse(signal.at)) ? signal.kind : null;
 	return {
 		changeRequest,
 		reviewedSha: review?.commitSha ?? null,
 		counts,
 		total: r.threads.length,
 		headMoved,
-		addressed: signal === null ? counts.open === 0 && authorActed : signal === "ready",
-		confidence: signal === "ready" ? "confirmed" : estimated,
+		addressed: said === null ? counts.open === 0 && authorActed : said === "ready",
+		confidence: said === "ready" ? "confirmed" : estimated,
 		outstandingSince: latest(givenAt, awaitingAuthor.map((t) => t.lastCommentAt)),
 		addressedSince: latest(givenAt, [snapshot.headCommittedAt, ...authorReplies.map((t) => t.lastCommentAt)]),
 	};
@@ -284,7 +286,7 @@ function blockersOf(gates: Gates, seed: readonly Blocker[]): Blocker[] {
 
 interface FoldFacts {
 	snapshot: PrSnapshot;
-	signal: Signal;
+	signal: AuthorSignal["kind"] | null;
 	reviewers: readonly Assessment[];
 	changeRequesters: readonly Assessment[];
 	approvals: readonly { login: Login; at: IsoTime }[];
@@ -294,7 +296,7 @@ interface FoldFacts {
 	mergeCourt: Court | null;
 }
 
-function foldFactsOf(snapshot: PrSnapshot, reviewers: readonly Assessment[], signal: Signal): FoldFacts {
+function foldFactsOf(snapshot: PrSnapshot, reviewers: readonly Assessment[], signal: AuthorSignal["kind"] | null): FoldFacts {
 	const approvals = reviewers.flatMap((r) => (r.approvedAt === null ? [] : [{ login: r.status.reviewer.login, at: r.approvedAt }]));
 	const gates = gatesOf(snapshot);
 	const mergeBlockers = blockersOf(gates, []);

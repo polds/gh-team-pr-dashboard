@@ -521,14 +521,14 @@ describe("author signals", () => {
 	};
 
 	it("not_ready puts addressed feedback back with the author", () => {
-		const derived = derive(pr(addressed), context({ authorSignal: { kind: "not_ready", headSha: asSha("c2") } }));
+		const derived = derive(pr(addressed), context({ authorSignal: { kind: "not_ready", headSha: asSha("c2"), at: hour(5) } }));
 		expect(derived).toMatchObject({ state: "changes_requested", court: "author", actors: [asAuthor(ana, hour(2))] });
 		expect(derived.reviewers[0]?.kind).toBe("feedback_outstanding");
 		expect(derived.reasons).toContainEqual({ kind: "author_says_not_ready" });
 	});
 
 	it("ready hands outstanding feedback to the reviewer with confirmed confidence", () => {
-		const derived = derive(pr(outstanding), context({ authorSignal: { kind: "ready", headSha: asSha("c1") } }));
+		const derived = derive(pr(outstanding), context({ authorSignal: { kind: "ready", headSha: asSha("c1"), at: hour(5) } }));
 		expect(derived).toMatchObject({
 			state: "likely_ready_for_rereview",
 			court: "reviewers",
@@ -538,8 +538,29 @@ describe("author signals", () => {
 		expect(derived.reasons).toContainEqual({ kind: "author_says_ready" });
 	});
 
+	it("stops trusting a ready signal once the reviewer asks for changes again on the same commit", () => {
+		const askedAgain: Partial<PrSnapshot> = {
+			reviewDecision: "CHANGES_REQUESTED",
+			...reviews(review(rex, "CHANGES_REQUESTED", hour(6), "c1")),
+			threads: [thread(rex, { startedAt: hour(2), lastCommentBy: ana, lastCommentAt: hour(3) }), thread(rex, { startedAt: hour(6) })],
+		};
+		const derived = derive(pr(askedAgain), context({ authorSignal: { kind: "ready", headSha: asSha("c1"), at: hour(5) } }));
+		expect(derived).toMatchObject({ state: "changes_requested", court: "author", confidence: null });
+		expect(derived.reasons).not.toContainEqual({ kind: "author_says_ready" });
+	});
+
+	it("stops trusting a ready signal once the reviewer replies on a thread after it", () => {
+		const repliedAfter: Partial<PrSnapshot> = {
+			reviewDecision: "CHANGES_REQUESTED",
+			...reviews(review(rex, "CHANGES_REQUESTED", hour(2), "c1")),
+			threads: [thread(rex, { startedAt: hour(2), lastCommentBy: rex, lastCommentAt: hour(7) })],
+		};
+		const derived = derive(pr(repliedAfter), context({ authorSignal: { kind: "ready", headSha: asSha("c1"), at: hour(5) } }));
+		expect(derived).toMatchObject({ state: "changes_requested", court: "author" });
+	});
+
 	it("ignores a signal sent for an older head commit", () => {
-		const stale = derive(pr(addressed), context({ authorSignal: { kind: "not_ready", headSha: asSha("c1") } }));
+		const stale = derive(pr(addressed), context({ authorSignal: { kind: "not_ready", headSha: asSha("c1"), at: hour(5) } }));
 		expect(stale).toEqual(deriveOf(addressed));
 		expect(stale.state).toBe("likely_ready_for_rereview");
 	});

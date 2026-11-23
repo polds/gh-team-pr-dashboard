@@ -44,7 +44,7 @@ const count = z.number().int().nonnegative();
 
 const fileSchema = z.object({
 	version: z.literal(1),
-	signals: z.record(z.string(), z.object({ kind: z.enum(["ready", "not_ready"]), headSha: z.string().transform(asSha) })),
+	signals: z.record(z.string(), z.object({ kind: z.enum(["ready", "not_ready"]), headSha: z.string().transform(asSha), at: isoTimeSchema })),
 	states: z.record(z.string(), z.object({ state: z.enum(PR_STATES), since: isoTimeSchema })),
 	heuristic: z.object({ confirmed: count, rejected: count }),
 });
@@ -127,7 +127,7 @@ export function createStore({
 				if (held !== undefined && signals.delete(id)) changed();
 				return;
 			}
-			if (held?.kind === signal.kind && held.headSha === signal.headSha) return;
+			if (held?.kind === signal.kind && held.headSha === signal.headSha && held.at === signal.at) return;
 			signals.set(id, signal);
 			changed();
 		},

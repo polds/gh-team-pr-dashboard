@@ -6,7 +6,7 @@ import { systemClock } from "../src/clock.ts";
 import { silentLogger } from "../src/log.ts";
 import { createStore } from "../src/store.ts";
 import type { Store } from "../src/store.ts";
-import { approvedPr, bob, changesRequestedPr, hour, likelyReadyPr, person, refOf, requestedPr, snapshot } from "./builders.ts";
+import { approvedPr, bob, changesRequestedPr, hour, likelyReadyPr, person, refOf, requestedPr, review, snapshot } from "./builders.ts";
 
 const CARD_CONFIG: CardConfig = {
 	priorityLabels: ["hotfix"],
@@ -150,6 +150,19 @@ describe("board", () => {
 			const pushed: PrSnapshot = { ...likelyReady, headSha: asSha("c3"), headCommittedAt: hour(5) };
 			expect(cardOf(board.apply(refOf(pushed), pushed, at(5))).derived.state).toBe("likely_ready_for_rereview");
 			expect(store.signal(likelyReady.id)).toBeNull();
+		});
+
+		it("lets a reviewer's new change request override a stored ready signal, and lets the author signal ready again", () => {
+			const board = newBoard();
+			board.apply(refOf(changesRequested), changesRequested, at(2.5));
+			expect(cardOf(board.setSignal(changesRequested.id, "ready", at(3))).derived.state).toBe("likely_ready_for_rereview");
+			const askedAgain: PrSnapshot = {
+				...changesRequested,
+				decisiveReviews: [review(bob, "CHANGES_REQUESTED", hour(4))],
+				latestReviews: [review(bob, "CHANGES_REQUESTED", hour(4))],
+			};
+			expect(cardOf(board.apply(refOf(askedAgain), askedAgain, at(4))).derived).toMatchObject({ state: "changes_requested", court: "author" });
+			expect(cardOf(board.setSignal(changesRequested.id, "ready", at(5))).derived.state).toBe("likely_ready_for_rereview");
 		});
 
 		it("counts a re-review by a likely-ready actor as confirmed, once per spell", () => {

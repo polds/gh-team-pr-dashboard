@@ -150,6 +150,8 @@ The author of a pull request can send one of two signals from the card.
 - **Ready for another look.** When the GitHub App has the write permission, Radar calls GitHub's re-request endpoint with the author's own user token. GitHub then reports a pending request, and the state becomes `in_review` with no heuristic. Without the write permission, Radar stores the signal and shows the card as `likely_ready_for_rereview` with the reason "the author says it is ready".
 - **Not ready yet.** Radar stores the signal against the current head SHA. The card returns to `changes_requested`. The next push clears the signal.
 
+A stored "ready" signal carries the time the author sent it. It stops covering a reviewer who requests changes again or comments on a thread after that time, so the card returns to the author. The author can send the signal again.
+
 ### Time in state
 
 `derive` estimates when the pull request entered its state from GitHub timestamps: the review time, the head commit time, the last author reply, the check completion time, and the ready-for-review time. An estimate needs no stored history, so a restart loses nothing.

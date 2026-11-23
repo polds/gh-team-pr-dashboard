@@ -197,10 +197,10 @@ export function createBoard({ store, cardConfig }: { store: Store; cardConfig: C
 		setSignal(id, kind, now) {
 			const held = entries.get(id);
 			if (held === undefined) return [];
-			const signal = kind === null ? null : { kind, headSha: held.snapshot.headSha };
+			const signal = kind === null ? null : { kind, headSha: held.snapshot.headSha, at: nowIso(now) };
 			const prior = store.signal(id);
-			if (prior?.kind === signal?.kind && (signal === null || prior?.headSha === signal.headSha)) return [];
-			if (kind !== null) countOutcome(held, kind === "ready" ? "confirmed" : "rejected");
+			const repeated = prior?.kind === signal?.kind && (signal === null || prior?.headSha === signal.headSha);
+			if (kind !== null && !repeated) countOutcome(held, kind === "ready" ? "confirmed" : "rejected");
 			store.setSignal(id, signal);
 			return apply(held.ref, held.snapshot, now);
 		},
