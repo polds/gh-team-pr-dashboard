@@ -1,0 +1,85 @@
+{{- if and .Values.ingress.enabled .Values.host }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "radar.fullname" . }}
+  labels:
+    {{- include "radar.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.ingress.tlsSecretName }}
+  tls:
+    - hosts:
+        - {{ $.Values.host | quote }}
+      secretName: {{ . | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "radar.fullname" . }}
+                port:
+                  name: http
+{{- end }}
+{{- if .Values.webhookIngress.enabled }}
+---
+# GitHub reaches the webhook receiver through this ingress. It exposes that one path and nothing else.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "radar.fullname" . }}-webhook
+  labels:
+    {{- include "radar.labels" . | nindent 4 }}
+  {{- if or .Values.webhookIngress.annotations .Values.gke.managedCertificate }}
+  annotations:
+    {{- if .Values.gke.managedCertificate }}
+    networking.gke.io/managed-certificates: {{ include "radar.fullname" . }}-webhook
+    {{- end }}
+    {{- with .Values.webhookIngress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+spec:
+  {{- with .Values.webhookIngress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.webhookIngress.tlsSecretName }}
+  tls:
+    - hosts:
+        - {{ $.Values.webhookIngress.host | quote }}
+      secretName: {{ . | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.webhookIngress.host | quote }}
+      http:
+        paths:
+          - path: /webhooks/github
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "radar.fullname" . }}
+                port:
+                  name: http
+{{- if .Values.gke.managedCertificate }}
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ include "radar.fullname" . }}-webhook
+  labels:
+    {{- include "radar.labels" . | nindent 4 }}
+spec:
+  domains:
+    - {{ .Values.webhookIngress.host | quote }}
+{{- end }}
+{{- end }}

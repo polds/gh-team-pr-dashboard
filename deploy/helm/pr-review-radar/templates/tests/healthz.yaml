@@ -1,0 +1,41 @@
+# `helm test` runs this pod. It uses the application image, so the test pulls nothing extra.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "radar.fullname" . }}-test
+  labels:
+    {{- include "radar.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: healthz
+      image: {{ include "radar.image" . | quote }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      command:
+        - node
+        - --input-type=module
+        - -e
+        - |
+          const url = "http://{{ include "radar.fullname" . }}.{{ .Release.Namespace }}.svc/healthz";
+          const response = await fetch(url);
+          const body = await response.json();
+          if (!response.ok || body.ok !== true) throw new Error(`${url} answered ${response.status}`);
+          console.log(`${url} is healthy, last sweep ${body.lastSweepAt}`);
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]

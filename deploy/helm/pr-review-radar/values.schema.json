@@ -1,0 +1,84 @@
+{
+	"$schema": "https://json-schema.org/draft-07/schema#",
+	"title": "pr-review-radar values",
+	"type": "object",
+	"additionalProperties": false,
+	"properties": {
+		"global": { "type": "object" },
+		"org": { "type": "string", "pattern": "^[A-Za-z0-9-]*$" },
+		"host": { "type": "string", "pattern": "^[A-Za-z0-9.-]*$" },
+		"demo": { "type": "boolean" },
+		"existingSecret": { "type": "string" },
+		"github": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"appId": { "type": ["string", "integer"] },
+				"clientId": { "type": "string" },
+				"clientSecret": { "type": "string" },
+				"privateKey": { "type": "string" },
+				"webhookSecret": { "type": "string" }
+			}
+		},
+		"sessionSecret": { "type": "string", "pattern": "^$|^.{32,}$" },
+		"env": {
+			"type": "object",
+			"propertyNames": { "pattern": "^[A-Z][A-Z0-9_]*$" },
+			"additionalProperties": { "type": ["string", "number", "boolean"] }
+		},
+		"image": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["repository"],
+			"properties": {
+				"repository": { "type": "string", "minLength": 1 },
+				"tag": { "type": "string" },
+				"pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+			}
+		},
+		"imagePullSecrets": {
+			"type": "array",
+			"items": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" } } }
+		},
+		"ingress": { "$ref": "#/definitions/ingress" },
+		"webhookIngress": {
+			"allOf": [{ "$ref": "#/definitions/ingress" }],
+			"properties": { "host": { "type": "string", "pattern": "^[A-Za-z0-9.-]*$" } }
+		},
+		"gke": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"backendConfig": { "type": "boolean" },
+				"managedCertificate": { "type": "boolean" }
+			}
+		},
+		"persistence": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"enabled": { "type": "boolean" },
+				"size": { "type": "string", "minLength": 1 },
+				"storageClass": { "type": "string" }
+			}
+		},
+		"resources": { "type": "object" },
+		"nodeSelector": { "type": "object" },
+		"tolerations": { "type": "array" },
+		"affinity": { "type": "object" },
+		"nameOverride": { "type": "string" },
+		"fullnameOverride": { "type": "string" }
+	},
+	"definitions": {
+		"ingress": {
+			"type": "object",
+			"properties": {
+				"enabled": { "type": "boolean" },
+				"host": { "type": "string" },
+				"className": { "type": "string" },
+				"annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+				"tlsSecretName": { "type": "string" }
+			}
+		}
+	}
+}

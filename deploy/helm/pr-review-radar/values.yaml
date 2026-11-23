@@ -1,0 +1,78 @@
+# The GitHub organization login. Required unless demo is true.
+org: ""
+# The host people open, for example radar.internal.example.com. The board is served at https://<host>.
+# Required unless demo is true.
+host: ""
+
+# Run against a simulated organization. Needs no GitHub App and no secret. For trying the chart out.
+demo: false
+
+# GitHub App credentials. Either name a Secret you manage, or fill in `github` and the chart creates one.
+# The Secret holds GITHUB_APP_ID, GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY,
+# and GITHUB_WEBHOOK_SECRET.
+existingSecret: ""
+github:
+  appId: ""
+  clientId: ""
+  clientSecret: ""
+  # The PEM file. Pass it with --set-file github.privateKey=private-key.pem.
+  privateKey: ""
+  webhookSecret: ""
+
+# The key that encrypts session cookies. When empty, the chart generates one and keeps it across upgrades.
+# Set it when a tool renders the chart without cluster access, such as Argo CD.
+sessionSecret: ""
+
+# Extra settings as environment variables, for example RADAR_TIME_ZONE or RADAR_REREQUEST_ENABLED.
+# docs/runbook.md lists them. The server's defaults apply to anything left out.
+env: {}
+
+image:
+  repository: ghcr.io/polds/gh-team-pr-dashboard
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# The board. TLS is expected, because sign-in does not work over plain HTTP.
+ingress:
+  enabled: true
+  className: ""
+  annotations: {}
+  # A TLS Secret for `host`. Leave empty when the ingress controller or an annotation supplies the certificate.
+  tlsSecretName: ""
+
+# A second ingress that exposes only /webhooks/github, for clusters where the board is internal
+# and GitHub must reach the webhook receiver from the internet.
+webhookIngress:
+  enabled: false
+  host: ""
+  className: ""
+  annotations: {}
+  tlsSecretName: ""
+
+gke:
+  # A BackendConfig that raises the load balancer timeout to one hour, so the live event stream stays open.
+  backendConfig: false
+  # A Google-managed certificate for webhookIngress.host.
+  managedCertificate: false
+
+# Author signals and time-in-state live here. Without it they reset when the pod restarts.
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+nameOverride: ""
+fullnameOverride: ""
