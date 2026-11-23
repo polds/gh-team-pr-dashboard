@@ -1,0 +1,242 @@
+PR Review Radar
+
+Project brief for a real-time, team-wide dashboard of every open pull request across the Atum GitHub org, with a derived "whose turn" state, a personal Mine view, and opt-in desktop notifications. Written to hand to an agent or a teammate; it sets goals and constraints, not the design.
+
+On this page
+
+The pitch
+Why bother
+What gets built
+Derived PR state
+What the board shows
+Honest critique
+Open questions to answer first
+Constraints and non-goals
+Done looks like
+Handoff prompt
+Sources
+The pitch
+
+Review work at Atum is spread across several repos, including a monorepo, and it keeps falling into the same Slack loop: someone asks for a review, a reviewer leaves comments, the author addresses them but forgets to re-request, and nobody can tell whose turn it is without clicking through GitHub. Build a live board that finds every org PR, derives a single "ball in whose court" state for each one, and updates for everyone watching as reviews, commits, checks and threads change.
+
+GitHub stays the review tool.
+
+The board does not approve, comment or merge. It tells you whether your PR or you need attention, and sends you to GitHub to act.
+
+Why bother
+The bottleneck is visibility, not a new place to write reviews. People miss that they have been requested, miss that comments landed, and miss that an author already addressed them.
+Authors routinely forget to click "Re-request review." If changes are still requested, the PR is still in a review state; the board has to notice when it is likely ready for another pass without waiting for that click.
+GitHub's own views are per-user or easy to lose across repos. A shared board with time-in-state should make backlog obvious without anyone having to announce it in Slack.
+Done right, this is blameless: surface states so the team can lean on each other, and make it easy to pick up a review that has been sitting.
+This is internal operations, not an Atum product. A generic version could later be open-sourced; "use what we build" only counts if the team actually lives in it.
+What gets built
+1
+
+State engine
+
+For every open org PR, derive a single current state and who needs to act. Recompute on each webhook and again on a periodic reconcile, because webhooks drop.
+
+2
+
+Ingest
+
+A GitHub App installed org-wide. Subscribe to pull_request, pull_request_review, pull_request_review_comment, pull_request_review_thread, check_suite, check_run and status. Discover all org PRs automatically; fill gaps with GraphQL.
+
+3
+
+Live board
+
+A shared, Trello-like view. Cards move and reorder as state and time-in-state change. Push updates to open clients (websocket or SSE; builder's call).
+
+4
+
+Mine
+
+A first-class section the user cannot miss: my PRs waiting on review, my PRs that have received reviews, and PRs waiting on me for a review or re-review. This is the "whose court" filter for the current user, not a separate data model.
+
+5
+
+Notifications
+
+Opt-in browser desktop notifications (Notification API / web push) with per-user rules: only when it is my turn, quiet hours, digest. Slack DMs are maybe-later, not v1; the point is to get out of the channel.
+
+6
+
+Presence
+
+Ephemeral, and kept separate from PR state: avatars appear when someone joins the board, and move onto a card when they are looking at its details. Easy to turn off.
+
+Language, hosting and UI library are the builder's call.
+
+Derived PR state
+
+This is the core. Suggested states, names can change:
+
+State
+Whose court
+Draft
+Author
+Needs review
+Reviewers
+In review
+Reviewers
+Changes requested / author addressing
+Author
+Likely ready for re-review
+Reviewers
+Approved but blocked
+Depends: author, reviewers, or CI
+Ready to merge
+Author
+Merged or closed
+Nobody
+
+Do not treat GitHub's reviewDecision as the whole state. A PR with CHANGES_REQUESTED is still in a review state, but after the author pushes and resolves threads it may be ready for another pass even though nobody clicked "Re-request review." "Approved but blocked" covers the usual merge gates that are not a missing review: failing checks, a stale or dismissed approval, conflicts, or a required review that still is not there.
+
+Inputs the engine should read, not an exhaustive schema:
+
+reviewDecision (APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, or null)
+Latest review per reviewer, including dismissed reviews
+Pending review requests, for users and for teams or CODEOWNERS
+Commits pushed after a changes-requested review
+Resolved vs unresolved review threads, and author replies
+Check runs and commit status
+mergeable and mergeStateStatus
+Branch protection requirements (required reviewers, required checks)
+
+The important heuristic is "likely ready for re-review": changes still requested, plus new commits since that review, plus threads resolved or replied to. Call it a heuristic on the card, show why the PR is in that column, and let the author nudge or confirm it. A one-click action that performs a real GitHub re-request is fine; writing the review is not.
+
+Each state maps to who needs to act. Mine is that mapping, filtered to the current user.
+
+What the board shows
+Every in-scope open PR as a card: title, repo, author, reviewers, CI / check status, current state, and time in that state.
+Cards ordered by a simple priority plus time in state, and reordered live as those change.
+A help-wanted lane for PRs that have been waiting a long time, with suggested capable reviewers (CODEOWNERS, people who have reviewed that area before). The cue is "who can help," not "blocked by X."
+Noise controls: bot PRs (Renovate, Dependabot) filtered or grouped, drafts collapsed, monorepo path or team filters.
+No per-person leaderboards, no review-time scoreboard, no shame column. Celebrate unblocking if you want a flourish; do not penalize.
+
+Presence is a small realtime cue, not a feature to optimize. "Who is looking" can feel like surveillance, so it must be opt-out, preferably off until the user turns it on.
+
+Honest critique
+
+This problem is not new. GitHub already has https://github.com/pulls and a review-requested filter. The GitHub Slack app can send scheduled review reminders. Those are the comparisons that matter. Third-party SaaS review tools are off the table for procurement reasons.
+
+v1 has to beat that prior art on a specific gap: a cross-repo, derived "whose turn" state, including the re-review inference authors forget to signal, plus a shared team board with lightweight presence. If a short spike shows that GitHub's own views plus Slack reminders already close enough of the gap, stop. Do not build a prettier github.com/pulls.
+
+Open questions to answer first
+
+Spike GitHub before writing product code.
+
+The first deliverable is a short comparison of github.com/pulls, review-requested filters, and the GitHub Slack app's scheduled reminders against the gap above. Only start the board if the gap is still real.
+
+1.
+Will org admins approve a GitHub App, and what is the least set of permissions they will accept?
+2.
+Auth: GitHub OAuth restricted to org membership, or something already in use internally?
+3.
+Where does this host? Assume internal (existing GKE is a fine default) unless there is a better default.
+4.
+Which repos are in scope for v1: the whole org, or a named list that includes the monorepo?
+5.
+When a review is requested of a team or of CODEOWNERS, how is that attributed to individuals in Mine and in notifications?
+6.
+What does "priority" mean on the board, in one or two rules a newcomer can explain?
+7.
+How long is state history retained, and does time-in-state count calendar time or business hours?
+8.
+What accuracy is "good enough" for the re-review heuristic before it is trusted in Mine and in notifications?
+Constraints and non-goals
+Read-mostly
+No reviewing, approving, commenting or merging in the tool. The only allowed write is an optional, author-initiated GitHub re-request.
+Permissions
+Least-privilege GitHub App permissions. No secrets in the repo.
+Blameless
+No individual performance metrics, no "blocked by X" leaderboards, no review SLAs used as a score.
+Presence
+Opt-out, or opt-in. It is not a monitoring signal.
+Notifications
+Off until the user opts in.
+Not in scope for v1
+Slack DMs or channel bots, reviewing inside the board, mobile apps, and any third-party SaaS dependency.
+Done looks like
+1
+
+Spike written
+
+A short note on what GitHub's own views and Slack reminders already cover, and whether the gap is still worth building.
+
+2
+
+Org PRs land live
+
+Every in-scope open PR appears or updates on the board within a few seconds of a GitHub event, and a reconcile pass catches anything the webhook missed.
+
+3
+
+Mine is trustworthy
+
+After a week of dogfooding, people agree the Mine view is correct about whose turn it is, including re-review.
+
+4
+
+Heuristic is explainable
+
+Every "likely ready for re-review" card shows why it is there, and the author can confirm or nudge it.
+
+5
+
+Notifications work
+
+Opt-in desktop notifications fire according to a user's rules and do not fire when they are off.
+
+6
+
+Slack gets quieter
+
+Review-request ping-pong in the primary team channel measurably drops.
+
+Handoff prompt
+Build "PR Review Radar": a real-time, team-wide dashboard of every open pull request in the Atum GitHub organization, with a derived "ball in whose court" state per PR, an unmissable Mine view, opt-in desktop notifications, and lightweight presence.
+
+Problem: review work is spread across multiple repos, including a monorepo. Authors forget to re-request review after addressing feedback, people miss that they have been requested, and the primary Slack channel becomes review-request ping-pong. The team needs one place to see whether their PR or they need attention.
+
+Goals: a shared live board (Trello-like) that updates for every viewer as PRs open, get reviewed, or change state; a Mine section (my PRs waiting on review, my PRs that have received reviews, PRs waiting on me for review or re-review); time-in-state with blameless ordering; encouragement to help with review backlog; opt-in desktop notifications based on user preferences.
+
+Hard rules: GitHub stays the review tool — no approving, commenting or merging here. The only allowed write is an optional author-initiated re-request via the GitHub API. Read-mostly GitHub App, least privilege, no secrets in git. No individual performance metrics or "blocked by X" shame boards. Presence is ephemeral, separate from PR state, and opt-out (or opt-in). Notifications are off until opted in. Slack DMs are not v1. Third-party SaaS review tools are off the table for procurement reasons.
+
+Start with a spike, before writing product code: compare github.com/pulls, GitHub's review-requested filters, and the GitHub Slack app's scheduled reminders against the gap this tool is supposed to close (cross-repo derived whose-turn state, re-review inference, shared team presence). If that stack is enough, stop and write that down.
+
+If the gap is real, propose a small design, then build:
+- A per-PR derived state machine (draft, needs review, in review, changes requested / author addressing, likely ready for re-review, approved-but-blocked, ready to merge, merged/closed — names can change). Inputs include reviewDecision, latest review per reviewer, pending review requests (users and teams/CODEOWNERS), commits after a changes-requested review, resolved vs unresolved threads, author replies, check runs, mergeable/mergeStateStatus, and branch protection. "Likely ready for re-review" is a heuristic (changes requested + new commits + threads resolved or replied) and must be explained on the card; let the author confirm or nudge it.
+- Each state maps to who needs to act (author, reviewers, CI, nobody). Mine is that filter.
+- Data in: GitHub App, org-wide, webhooks (pull_request, pull_request_review, pull_request_review_comment, pull_request_review_thread, check_suite, check_run, status) plus periodic GraphQL reconciliation. Data out: server push (websocket or SSE) to clients. Do not over-specify the stack.
+- Board UX: time-in-state, order by priority and age of state, CI and reviewer info on the card, bot PRs filtered or grouped, drafts collapsed, monorepo path/team filters, a help-wanted lane with suggested capable reviewers. Celebrate unblocking; do not keep score.
+- Host internally (existing GKE is a fine default). Auth via GitHub OAuth and org membership.
+
+Answer the open questions in the brief (app permissions, repo scope, team-request attribution, priority, heuristic accuracy) as you go.
+
+Docs: https://docs.github.com/en/webhooks/webhook-events-and-payloads
+https://docs.github.com/en/graphql/reference/pulls
+
+Copy
+Sources
+
+Webhook events and payloads
+
+docs.github.com
+
+Pull requests (GraphQL)
+
+docs.github.com
+
+Choosing permissions for a GitHub App
+
+docs.github.com
+
+Permissions required for GitHub Apps
+
+docs.github.com
+
+Notifications API
+
+developer.mozilla.org
