@@ -176,7 +176,7 @@ If your network allows no inbound traffic from GitHub, leave `webhookIngress` of
 
 ## Release
 
-One workflow, `.github/workflows/ci.yml`, tests, builds, and publishes.
+One workflow, `.github/workflows/ci.yml`, tests, builds, and publishes. A second, `.github/workflows/release.yml`, creates the tag that starts a release.
 
 | Event | What it publishes |
 |---|---|
@@ -186,7 +186,31 @@ One workflow, `.github/workflows/ci.yml`, tests, builds, and publishes.
 
 Publishing runs only after every check passes.
 
-To cut a release, tag a commit on `main` and push the tag.
+### Cut a release
+
+Run the `release` workflow on `main`. Open **Actions**, pick **release**, and choose **Run workflow**. Or use the command line.
+
+```
+gh workflow run release.yml -f bump=minor
+```
+
+| Input | Meaning |
+|---|---|
+| `bump` | `patch`, `minor`, or `major`. The workflow raises that part of the latest release. With no release yet, the latest release counts as `0.0.0`. |
+| `version` | An exact version such as `1.4.0`. It overrides `bump`. The workflow refuses a version that exists or that is older than the latest release. |
+| `dry_run` | Works out the version and stops. Nothing is tagged. |
+
+The workflow does three things.
+
+1. It checks that the pipeline passed on the current commit of `main`. If the run is red or still going, the workflow stops and tags nothing.
+2. It creates the tag `vX.Y.Z` on that commit.
+3. It starts the pipeline on the tag. The pipeline runs every gate again and then publishes.
+
+The workflow starts the pipeline itself because GitHub starts no workflow for a tag that another workflow pushed. It needs no personal token and no extra secret.
+
+If step 3 fails, the tag exists and nothing was published. Start the pipeline by hand with `gh workflow run ci.yml --ref vX.Y.Z`.
+
+You can still push a tag yourself. A tag that a person pushes starts the pipeline through its `push` trigger.
 
 ```
 git tag v1.0.0
@@ -195,7 +219,7 @@ git push origin v1.0.0
 
 To upgrade a cluster, run the install command again with `--version 1.0.0`.
 
-To check the chart on your machine, install `helm` and `kubeconform`, then run `npm run verify:chart`.
+To check the chart on your machine, install `helm` and `kubeconform`, then run `npm run verify:chart`. To check the version rules, run `scripts/verify-release.sh`.
 
 ## Check that it works
 

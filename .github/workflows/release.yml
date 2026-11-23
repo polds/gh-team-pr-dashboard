@@ -1,0 +1,92 @@
+# Cuts a release. Run it from the Actions tab, or with:
+#
+#   gh workflow run release.yml -f bump=minor
+#
+# It works out the next version, tags the current commit of the default branch, and starts the ci pipeline
+# on that tag. ci then runs every gate and publishes the image, the chart, and a GitHub release.
+#
+# GitHub starts no workflow for a tag that a workflow pushed with its own token. That rule prevents loops.
+# So this workflow starts ci on the tag itself, which needs no extra secret.
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to raise
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: An exact version such as 1.4.0. Overrides the bump.
+        type: string
+        required: false
+      dry_run:
+        description: Work out the version and stop. Nothing is tagged.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag
+      actions: write # start ci on the tag
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Release only from the default branch
+        if: github.ref_name != github.event.repository.default_branch
+        run: |
+          echo "::error::Run this workflow on ${DEFAULT_BRANCH}, not on ${GITHUB_REF_NAME}. A release is a commit that is already on ${DEFAULT_BRANCH}."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Work out the version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          version="$(git tag --list | scripts/next-version.sh "$BUMP" "$VERSION")"
+          latest="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Releasing v${version} from ${GITHUB_SHA::7}. The latest release is ${latest:-none}." | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Check that this commit passed the pipeline
+        run: |
+          # A tag on a commit that fails its gates would publish nothing and leave a tag behind.
+          conclusion="$(gh run list --workflow ci.yml --branch "$DEFAULT_BRANCH" --commit "$GITHUB_SHA" --event push \
+            --limit 1 --json conclusion --jq '.[0].conclusion // "none"')"
+          if [ "$conclusion" != success ]; then
+            echo "::error::The ci run for ${GITHUB_SHA::7} on ${DEFAULT_BRANCH} is \"${conclusion:-still running}\", not \"success\". Wait for it to pass, or fix ${DEFAULT_BRANCH} first."
+            exit 1
+          fi
+      - name: Stop here on a dry run
+        if: inputs.dry_run
+        run: echo "Dry run. Nothing was tagged." | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Create the tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f "ref=refs/tags/v${VERSION}" -f "sha=${GITHUB_SHA}" --silent
+      - name: Start the pipeline on the tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # If this step fails, the tag exists and nothing was published. Start the pipeline by hand:
+          #   gh workflow run ci.yml --ref vX.Y.Z
+          gh workflow run ci.yml --ref "v${VERSION}"
+          {
+            echo
+            echo "Tagged v${VERSION}. The pipeline is running on the tag and publishes when every gate passes."
+            echo "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/ci.yml?query=branch%3Av${VERSION}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

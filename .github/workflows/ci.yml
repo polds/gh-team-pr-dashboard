@@ -6,6 +6,10 @@
 #   Tag vX.Y.Z        the same gates, then publish the image as :X.Y.Z, :X.Y and :latest, publish the chart
 #                     as version X.Y.Z, and create a GitHub release.
 #
+# The release workflow (release.yml) creates the tag and starts this pipeline on it with workflow_dispatch,
+# because GitHub starts no workflow for a tag that another workflow pushed. A tag pushed by a person starts
+# it through the push trigger. Started by hand on a branch, the pipeline runs the gates and publishes nothing.
+#
 # docs/runbook.md explains how to cut a release and how to install what this publishes.
 name: ci
 on:
@@ -13,6 +17,7 @@ on:
   push:
     branches: [main]
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -43,6 +48,7 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: node scripts/verify-demo.mjs
+      - run: scripts/verify-release.sh
 
   chart:
     runs-on: ubuntu-latest
@@ -136,7 +142,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=multiarch
 
   publish:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag')
     needs: [test, chart, install, image]
     runs-on: ubuntu-latest
     permissions:
@@ -151,6 +157,10 @@ jobs:
           echo "image=ghcr.io/${repository}" >> "$GITHUB_OUTPUT"
           echo "charts=oci://ghcr.io/${repository%%/*}/charts" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::${GITHUB_REF_NAME} is not a release tag like v1.2.3."
+              exit 1
+            fi
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
             echo "version=0.0.0-edge" >> "$GITHUB_OUTPUT"
@@ -166,8 +176,8 @@ jobs:
         with:
           images: ${{ steps.names.outputs.image }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ steps.names.outputs.version }},enable=${{ github.ref_type == 'tag' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.names.outputs.version }},enable=${{ github.ref_type == 'tag' }}
             type=raw,value=edge,enable={{is_default_branch}}
             type=sha,format=short
       - name: Build and push the image

@@ -14,7 +14,7 @@ A live, shared board of every open pull request in one GitHub organization, with
 - `packages/core` is the domain: snapshot types, `derive`, ordering, Mine, notification rules. It is pure and has no dependencies. Change state rules here, and update the tables in `docs/design.md` in the same commit.
 - `packages/server` is the GitHub App client, webhook receiver, reconcile sweep, SSE hub, auth, presence, and the demo source.
 - `packages/web` is the React board.
-- `deploy` holds the Dockerfile, the Helm chart in `deploy/helm/pr-review-radar`, and the GitHub App manifest. The chart is the only description of the Kubernetes resources. `.github/workflows/ci.yml` publishes the image and the chart to GHCR.
+- `deploy` holds the Dockerfile, the Helm chart in `deploy/helm/pr-review-radar`, and the GitHub App manifest. The chart is the only description of the Kubernetes resources. `.github/workflows/ci.yml` publishes the image and the chart to GHCR. To release, run the `release` workflow, which tags `main` and starts that pipeline on the tag.
 
 ## Commands
 
