@@ -125,11 +125,14 @@ function common(env: z.infer<typeof commonSchema>) {
 	};
 }
 
-function parseOrThrow<T>(schema: z.ZodType<T>, env: Record<string, string>): T {
+function parseOrThrow<T>(schema: z.ZodType<T>, env: Record<string, string>, problems: string[] = []): T {
 	const result = schema.safeParse(env);
-	if (result.success) return result.data;
-	throw new ConfigError(result.error.issues.map((issue) => `${issue.path.join(".")} ${issue.message}`).join("\n"));
+	const all = [...(result.success ? [] : result.error.issues.map((issue) => `${issue.path.join(".")} ${issue.message}`)), ...problems];
+	if (result.success && all.length === 0) return result.data;
+	throw new ConfigError(all.join("\n"));
 }
+
+const MISSING_KEY = "GITHUB_APP_PRIVATE_KEY or GITHUB_APP_PRIVATE_KEY_FILE is required";
 
 /** Kubernetes and `.env` files often carry a PEM with escaped newlines. */
 function pemFrom(value: string): string {
@@ -138,9 +141,7 @@ function pemFrom(value: string): string {
 
 function privateKey(env: z.infer<typeof githubSchema>, readFile: (path: string) => string): string {
 	if (env.GITHUB_APP_PRIVATE_KEY !== undefined) return pemFrom(env.GITHUB_APP_PRIVATE_KEY);
-	if (env.GITHUB_APP_PRIVATE_KEY_FILE === undefined) {
-		throw new ConfigError("GITHUB_APP_PRIVATE_KEY or GITHUB_APP_PRIVATE_KEY_FILE is required");
-	}
+	if (env.GITHUB_APP_PRIVATE_KEY_FILE === undefined) throw new ConfigError(MISSING_KEY);
 	try {
 		return readFile(env.GITHUB_APP_PRIVATE_KEY_FILE);
 	} catch (error) {
@@ -169,7 +170,8 @@ export function loadConfig(
 			demoIntervalSeconds: demo.RADAR_DEMO_INTERVAL_SECONDS,
 		};
 	}
-	const github = parseOrThrow(githubSchema, env);
+	const keyMissing = env.GITHUB_APP_PRIVATE_KEY === undefined && env.GITHUB_APP_PRIVATE_KEY_FILE === undefined;
+	const github = parseOrThrow(githubSchema, env, keyMissing ? [MISSING_KEY] : []);
 	return {
 		mode: "github",
 		...common(github),
