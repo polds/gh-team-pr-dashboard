@@ -5,3 +5,4 @@ export * from "./derive.ts";
 export * from "./card.ts";
 export * from "./order.ts";
 export * from "./mine.ts";
+export * from "./reviewHistory.ts";
