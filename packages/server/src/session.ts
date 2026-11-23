@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:cr
 import { z } from "zod";
 import { asLogin } from "@radar/core";
 import type { Login } from "@radar/core";
+import type { Config } from "./config.ts";
 
 export interface Session {
 	login: Login;
@@ -32,8 +33,9 @@ const sessionSchema = z.object({
 	expiresAt: z.number(),
 });
 
-export function createSessionCodec(secret: string): SessionCodec {
-	const key = Buffer.from(hkdfSync("sha256", secret, "pr-review-radar", "session cookie v1", 32));
+/** The mode is part of the key, so a cookie sealed in demo mode never opens in GitHub mode, even under the same secret. */
+export function createSessionCodec({ mode, secret }: { mode: Config["mode"]; secret: string }): SessionCodec {
+	const key = Buffer.from(hkdfSync("sha256", secret, "pr-review-radar", `session cookie v2 ${mode}`, 32));
 
 	return {
 		seal(session) {

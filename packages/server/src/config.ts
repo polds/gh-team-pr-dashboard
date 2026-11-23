@@ -87,12 +87,10 @@ const commonSchema = z.object({
 	RADAR_WEB_DIST: z.string().default("packages/web/dist"),
 });
 
-const sessionSecret = required().min(32, "must be at least 32 characters; generate one with openssl rand -hex 32");
-
 const githubSchema = commonSchema.extend({
 	RADAR_ORG: required(),
 	RADAR_BASE_URL: baseUrl,
-	RADAR_SESSION_SECRET: sessionSecret,
+	RADAR_SESSION_SECRET: required().min(32, "must be at least 32 characters; generate one with openssl rand -hex 32"),
 	RADAR_REREQUEST_ENABLED: flag.prefault("false"),
 	GITHUB_APP_ID: required(),
 	GITHUB_APP_CLIENT_ID: required(),
@@ -105,7 +103,6 @@ const githubSchema = commonSchema.extend({
 
 const demoSchema = commonSchema.extend({
 	RADAR_BASE_URL: baseUrl.optional(),
-	RADAR_SESSION_SECRET: sessionSecret.optional(),
 	RADAR_REREQUEST_ENABLED: flag.prefault("true"),
 	RADAR_DEMO_INTERVAL_SECONDS: integer(0).default(8),
 });
@@ -165,7 +162,7 @@ export function loadConfig(
 			...common(demo),
 			org: DEMO_ORG,
 			baseUrl: demo.RADAR_BASE_URL ?? `http://localhost:${demo.PORT}`,
-			sessionSecret: demo.RADAR_SESSION_SECRET ?? randomBytes(32).toString("hex"),
+			sessionSecret: randomBytes(32).toString("hex"),
 			rerequestEnabled: demo.RADAR_REREQUEST_ENABLED,
 			demoIntervalSeconds: demo.RADAR_DEMO_INTERVAL_SECONDS,
 		};

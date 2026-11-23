@@ -91,7 +91,7 @@ export function createRadar({ config, clock, log, fetch = globalThis.fetch }: { 
 		presence,
 		refresher,
 		requester: mode.requester,
-		sessions: createSessionCodec(config.sessionSecret),
+		sessions: createSessionCodec({ mode: config.mode, secret: config.sessionSecret }),
 		clock,
 		lastSweepAt: reconciler.lastSweepAt,
 		log,

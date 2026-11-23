@@ -76,7 +76,7 @@ function harness({
 			rerequests.push(input);
 		},
 	};
-	const sessions = createSessionCodec(SECRET);
+	const sessions = createSessionCodec({ mode: "github", secret: SECRET });
 	const logger = recordingLogger();
 	const app = createApp({
 		config: githubConfig(webDist, config),
@@ -292,7 +292,7 @@ describe("HTTP app", () => {
 			const response = await callback(`code=c0de&state=${state}`);
 			const cookie = setCookies(response).find((candidate) => candidate.startsWith(`${SESSION_COOKIE}=`)) ?? "";
 			const value = decodeURIComponent((cookie.split(";")[0] ?? "").slice(SESSION_COOKIE.length + 1));
-			return createSessionCodec(SECRET).open(value, new Date());
+			return createSessionCodec({ mode: "github", secret: SECRET }).open(value, new Date());
 		}
 
 		it("keeps the user's GitHub token out of the session while the re-request is off", async () => {

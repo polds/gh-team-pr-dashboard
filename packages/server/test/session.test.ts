@@ -13,7 +13,7 @@ const session: Session = {
 };
 
 describe("session cookie", () => {
-	const codec = createSessionCodec("s".repeat(64));
+	const codec = createSessionCodec({ mode: "github", secret: "s".repeat(64) });
 
 	it("opens what it sealed, and the sealed value does not show the token", () => {
 		const sealed = codec.seal(session);
@@ -31,7 +31,13 @@ describe("session cookie", () => {
 	});
 
 	it("rejects a cookie sealed with another secret", () => {
-		expect(createSessionCodec("t".repeat(64)).open(codec.seal(session), NOW)).toBeNull();
+		expect(createSessionCodec({ mode: "github", secret: "t".repeat(64) }).open(codec.seal(session), NOW)).toBeNull();
+	});
+
+	it("rejects a cookie sealed in the other mode with the same secret", () => {
+		const demo = createSessionCodec({ mode: "demo", secret: "s".repeat(64) });
+		expect(codec.open(demo.seal(session), NOW)).toBeNull();
+		expect(demo.open(codec.seal(session), NOW)).toBeNull();
 	});
 
 	it("rejects an expired cookie", () => {

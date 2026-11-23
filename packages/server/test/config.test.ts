@@ -42,6 +42,15 @@ describe("loadConfig", () => {
 		expect(loadConfig({ RADAR_DEMO: "1", RADAR_ORG: "acme" }, noFile).org).toBe("atum");
 	});
 
+	it("makes a new session secret at each demo start, ignoring RADAR_SESSION_SECRET", () => {
+		const shared = "a".repeat(64);
+		const first = loadConfig({ RADAR_DEMO: "1", RADAR_SESSION_SECRET: shared }, noFile).sessionSecret;
+		const second = loadConfig({ RADAR_DEMO: "1", RADAR_SESSION_SECRET: shared }, noFile).sessionSecret;
+		expect(first).not.toBe(shared);
+		expect(second).not.toBe(first);
+		expect(loadConfig({ RADAR_DEMO: "1", RADAR_SESSION_SECRET: "short" }, noFile).mode).toBe("demo");
+	});
+
 	it("reads GitHub mode and strips the trailing slash from the base URL", () => {
 		const config = loadConfig({ ...GITHUB_ENV, RADAR_REPO_DENYLIST: "sandbox, scratch", GITHUB_INSTALLATION_ID: "42" }, noFile);
 		expect(config.mode).toBe("github");

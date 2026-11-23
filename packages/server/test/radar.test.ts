@@ -73,7 +73,7 @@ describe("GitHub mode wiring", () => {
 	}
 
 	const cookieFor = (login: string) =>
-		`${SESSION_COOKIE}=${createSessionCodec(SESSION_SECRET).seal({ login: asLogin(login), avatarUrl: "", name: null, userToken: `ghu_${login}`, expiresAt: Date.now() + 60_000 })}`;
+		`${SESSION_COOKIE}=${createSessionCodec({ mode: "github", secret: SESSION_SECRET }).seal({ login: asLogin(login), avatarUrl: "", name: null, userToken: `ghu_${login}`, expiresAt: Date.now() + 60_000 })}`;
 
 	const deliver = (event: string, payload: unknown) => {
 		const body = JSON.stringify(payload);
@@ -110,6 +110,24 @@ describe("GitHub mode wiring", () => {
 		for (const secret of [INSTALLATION_TOKEN, CLIENT_SECRET, WEBHOOK_SECRET, SESSION_SECRET, "PRIVATE KEY", "ghu_alice"]) {
 			expect(logged).not.toContain(secret);
 		}
+	});
+
+	it("does not open the real board with a cookie from the demo sign-in, even when both modes get the same RADAR_SESSION_SECRET", async () => {
+		const demo = createRadar({
+			config: loadConfig({ RADAR_DEMO: "1", RADAR_DEMO_INTERVAL_SECONDS: "0", RADAR_SESSION_SECRET: SESSION_SECRET, RADAR_DATA_DIR: dataDir }),
+			clock: systemClock,
+			log: recordingLogger().log,
+		});
+		const signIn = await demo.app.request("/auth/demo?login=ken");
+		demo.stop();
+		const cookie = signIn.headers.getSetCookie()[0]?.split(";")[0] ?? "";
+		expect(cookie).toMatch(new RegExp(`^${SESSION_COOKIE}=.`));
+
+		radar = createRadar({ config: githubConfig(), clock: systemClock, log: recordingLogger().log, fetch: fakeGitHub().fetch });
+		await radar.reconciler.sweep();
+		const board = await radar.app.request("/api/board", { headers: { Cookie: cookie } });
+		radar.stop();
+		expect(board.status).toBe(401);
 	});
 
 	it("keeps a pull request from a repository outside the organization off the board after a signed webhook and a sweep", async () => {
