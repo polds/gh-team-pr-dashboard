@@ -219,7 +219,7 @@ git push origin v1.0.0
 
 To upgrade a cluster, run the install command again with `--version 1.0.0`.
 
-To check the chart on your machine, install `helm` and `kubeconform`, then run `npm run verify:chart`. To check the version rules, run `scripts/verify-release.sh`.
+To check the chart on your machine, install `helm` and `kubeconform`, then run `npm run verify:chart`. To check the version rules and the chart push, run `scripts/verify-release.sh`.
 
 ## Check that it works
 
@@ -238,6 +238,7 @@ To check the chart on your machine, install `helm` and `kubeconform`, then run `
 | Cards update only every few minutes | Webhooks do not arrive. Check **Recent Deliveries** and the webhook ingress. |
 | Team requests do not show in Mine | The app lacks the organization Members permission, or an organization owner has not approved a permission change. |
 | The live connection drops every 30 or 60 seconds | The ingress or load balancer cuts long responses. On GKE set `gke.backendConfig`. Elsewhere raise the controller's read timeout. See TLS above. |
+| The `publish` job fails with `failed to perform "Tag" on destination ... not found` | GHCR answered 404 for a manifest that it had just accepted. `scripts/push-chart.sh` retries that case five times. If all five fail, run the job again. The push is safe to repeat. |
 | The pod cannot pull the image | The GHCR package is private. See "Pull the image from a private registry". |
 | The re-request button reports that GitHub refused | The app lacks Pull requests write, or the author no longer has access to the repository. |
 
