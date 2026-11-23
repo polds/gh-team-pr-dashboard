@@ -379,6 +379,7 @@ describe("the change-request round trip", () => {
 			actors: [direct(rex, hour(5))],
 			confidence: "high",
 			reasons: [
+				{ kind: "changes_requested_by", reviewer: rex.login, at: hour(2) },
 				{ kind: "new_commits_since_review", reviewer: rex.login, reviewedSha: asSha("c1") },
 				{ kind: "threads_addressed", reviewer: rex.login, resolved: 1, answered: 1, outdatedOnly: 0, total: 2 },
 			],
@@ -497,6 +498,7 @@ describe("confidence", () => {
 			state: "likely_ready_for_rereview",
 			confidence: "medium",
 			reasons: [
+				{ kind: "changes_requested_by", reviewer: rex.login, at: hour(2) },
 				{ kind: "new_commits_since_review", reviewer: rex.login, reviewedSha: asSha("c1") },
 				{ kind: "no_threads_on_change_request", reviewer: rex.login },
 			],

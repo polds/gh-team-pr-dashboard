@@ -222,6 +222,9 @@ function outstandingReasons(reviewer: Login, feedback: Feedback): Reason[] {
 
 function addressedReasons(reviewer: Login, feedback: Feedback): Reason[] {
 	const reasons: Reason[] = [];
+	if (feedback.changeRequest !== null) {
+		reasons.push({ kind: "changes_requested_by", reviewer, at: feedback.changeRequest.submittedAt });
+	}
 	if (feedback.headMoved) reasons.push({ kind: "new_commits_since_review", reviewer, reviewedSha: feedback.reviewedSha });
 	if (feedback.changeRequest !== null && feedback.total === 0) reasons.push({ kind: "no_threads_on_change_request", reviewer });
 	if (feedback.total > 0) {
