@@ -24,4 +24,10 @@ describe("mineFor", () => {
 		expect(numbers(mine.myTurn)).toEqual([3]);
 		expect(numbers(mine.waitingOnOthers)).toEqual([4]);
 	});
+
+	it("leaves the viewer's own draft out of every list, because a draft asks nothing of anyone yet", () => {
+		const draft = card({ number: 9, author: rex, derived: { state: "draft", court: "author", actors: [asAuthor(rex)] } });
+		const mine = mineFor(rex.login, [draft]);
+		expect(Object.values(mine).flat()).toEqual([]);
+	});
 });

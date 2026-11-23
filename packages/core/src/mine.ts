@@ -11,7 +11,7 @@ export interface Mine {
 
 function listFor(login: Login, card: Card): keyof Mine | null {
 	const { state, actors } = card.derived;
-	if (state === "merged" || state === "closed") return null;
+	if (state === "merged" || state === "closed" || state === "draft") return null;
 	const me = actors.find((actor) => actor.login === login);
 	if (card.author.login === login) return me === undefined ? "waitingOnOthers" : "myTurn";
 	switch (me?.via.kind) {
