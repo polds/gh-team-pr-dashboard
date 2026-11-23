@@ -1,0 +1,20 @@
+{
+	"name": "pr-review-radar",
+	"private": true,
+	"type": "module",
+	"engines": { "node": ">=22.18" },
+	"workspaces": ["packages/*"],
+	"scripts": {
+		"test": "vitest run",
+		"typecheck": "tsc -p packages/core && tsc -p packages/server && tsc -p packages/web",
+		"build": "npm run build -w @radar/web",
+		"start": "node packages/server/src/main.ts",
+		"dev:demo": "RADAR_DEMO=1 node --watch packages/server/src/main.ts & npm run dev -w @radar/web",
+		"check:schema": "node packages/server/scripts/check-schema.ts"
+	},
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"typescript": "^7.0.2",
+		"vitest": "^5.1.1"
+	}
+}
