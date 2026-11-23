@@ -27,8 +27,14 @@ export function Board({ layout }: { layout: Layout }) {
 									</span>
 								</h3>
 								<p className="lane-subtitle">
-									<span className="court-dot" aria-hidden="true" />
-									{COURT_TEXT[lane.court].waiting}
+									{lane.id === "approved_blocked" ? (
+										"Each card says who it waits on"
+									) : (
+										<>
+											<span className="court-dot" aria-hidden="true" />
+											{COURT_TEXT[lane.court].waiting}
+										</>
+									)}
 								</p>
 							</header>
 							<CardList cards={cards} variant="lane" empty="Nothing in this lane." />
