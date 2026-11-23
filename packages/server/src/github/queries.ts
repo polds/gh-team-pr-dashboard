@@ -64,7 +64,18 @@ export const ORG_TEAMS_QUERY = `query OrganizationTeams($org: String!, $after: S
 	organization(login: $org) {
 		teams(first: 50, after: $after) {
 			pageInfo { hasNextPage endCursor }
-			nodes { slug name members(first: 100) { nodes { login avatarUrl } } }
+			nodes { slug name members(first: 100) { pageInfo { hasNextPage endCursor } nodes { login avatarUrl } } }
+		}
+	}
+}`;
+
+export const TEAM_MEMBERS_QUERY = `query TeamMembers($org: String!, $slug: String!, $after: String) {
+	organization(login: $org) {
+		team(slug: $slug) {
+			members(first: 100, after: $after) {
+				pageInfo { hasNextPage endCursor }
+				nodes { login avatarUrl }
+			}
 		}
 	}
 }`;

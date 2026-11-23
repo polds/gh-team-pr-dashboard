@@ -4,7 +4,7 @@ import type { Person, PrSnapshot, TeamSlug } from "@radar/core";
 import type { AppAuth } from "./appAuth.ts";
 import { collectPages, connection, graphqlRequest, isNotFound, page } from "./graphql.ts";
 import type { Fetch } from "./http.ts";
-import { ORG_TEAMS_QUERY, OPEN_PULL_REQUESTS_QUERY, buildPullRequestsQuery, pullRequestAlias } from "./queries.ts";
+import { ORG_TEAMS_QUERY, OPEN_PULL_REQUESTS_QUERY, TEAM_MEMBERS_QUERY, buildPullRequestsQuery, pullRequestAlias } from "./queries.ts";
 import { findOrgInstallation, listInstallationRepos } from "./rest.ts";
 import { parsePullRequest } from "./snapshot.ts";
 
@@ -64,16 +64,16 @@ const openPullRequestsSchema = z.object({
 	repository: z.object({ pullRequests: page(openPullRequestSchema) }).nullable(),
 });
 
+const memberSchema = z.object({ login: z.string(), avatarUrl: z.string() });
+
 const orgTeamsSchema = z.object({
 	organization: z.object({
-		teams: page(
-			z.object({
-				slug: z.string(),
-				name: z.string(),
-				members: connection(z.object({ login: z.string(), avatarUrl: z.string() })),
-			}),
-		),
+		teams: page(z.object({ slug: z.string(), name: z.string(), members: page(memberSchema) })),
 	}),
+});
+
+const teamMembersSchema = z.object({
+	organization: z.object({ team: z.object({ members: page(memberSchema) }).nullable() }),
 });
 
 const pullRequestsSchema = z.record(z.string(), z.object({ pullRequest: z.unknown() }).nullable());
@@ -129,6 +129,17 @@ export function createGitHubSource({
 			return data.repository?.pullRequests ?? { nodes: [], after: null };
 		});
 		return pulls.map(({ number, fingerprint }) => ({ owner, name, number, fingerprint }));
+	}
+
+	async function teamMembers(slug: string, after: string | null) {
+		const data = await graphqlRequest({
+			token: await token(),
+			query: TEAM_MEMBERS_QUERY,
+			variables: { org, slug, after },
+			schema: teamMembersSchema,
+			fetch,
+		});
+		return data.organization.team?.members ?? { nodes: [], after: null };
 	}
 
 	async function fetchBatch(refs: PrRef[]): Promise<[string, PrSnapshot | null][]> {
@@ -197,11 +208,16 @@ export function createGitHubSource({
 				});
 				return data.organization.teams;
 			});
-			return teams.map(({ slug, name, members }) => ({
-				slug: asTeamSlug(slug),
-				name,
-				members: members.map((member) => ({ login: asLogin(member.login), avatarUrl: member.avatarUrl, isBot: false })),
-			}));
+			const infos: TeamInfo[] = [];
+			for (const { slug, name, members } of teams) {
+				const rest = members.after === null ? [] : await collectPages((after) => teamMembers(slug, after), members.after);
+				infos.push({
+					slug: asTeamSlug(slug),
+					name,
+					members: [...members.nodes, ...rest].map((member) => ({ login: asLogin(member.login), avatarUrl: member.avatarUrl, isBot: false })),
+				});
+			}
+			return infos;
 		},
 	};
 }

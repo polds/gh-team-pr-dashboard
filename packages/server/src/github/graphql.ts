@@ -70,9 +70,13 @@ export function page<T extends z.ZodType>(node: T) {
 		}));
 }
 
-export async function collectPages<T>(fetchPage: (after: string | null) => Promise<{ nodes: T[]; after: string | null }>): Promise<T[]> {
+/** Fetches from the page after `start`, or from the first page when `start` is null, through the last. */
+export async function collectPages<T>(
+	fetchPage: (after: string | null) => Promise<{ nodes: T[]; after: string | null }>,
+	start: string | null = null,
+): Promise<T[]> {
 	const items: T[] = [];
-	let after: string | null = null;
+	let after = start;
 	do {
 		const result = await fetchPage(after);
 		items.push(...result.nodes);

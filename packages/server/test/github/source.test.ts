@@ -64,11 +64,17 @@ function openPullRequestsPage(name: string, after: unknown, nodes: (number: numb
 const TEAM_PAGES: Record<string, unknown> = {
 	start: {
 		pageInfo: { hasNextPage: true, endCursor: "teams-1" },
-		nodes: [{ slug: "platform", name: "Platform", members: { nodes: [{ login: "bob", avatarUrl: "https://avatars.example/bob" }, null] } }],
+		nodes: [
+			{
+				slug: "platform",
+				name: "Platform",
+				members: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [{ login: "bob", avatarUrl: "https://avatars.example/bob" }, null] },
+			},
+		],
 	},
 	"teams-1": {
 		pageInfo: { hasNextPage: false, endCursor: null },
-		nodes: [{ slug: "web", name: "Web", members: { nodes: [] } }],
+		nodes: [{ slug: "web", name: "Web", members: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } }],
 	},
 };
 
@@ -237,6 +243,33 @@ describe("createGitHubSource", () => {
 		await expect(radar.teams()).resolves.toEqual([
 			{ slug: "platform", name: "Platform", members: [{ login: "bob", avatarUrl: "https://avatars.example/bob", isBot: false }] },
 			{ slug: "web", name: "Web", members: [] },
+		]);
+	});
+
+	it("pages the members of a team past the first page, one team at a time", async () => {
+		const developers = Array.from({ length: 250 }, (_, index) => ({ login: `dev${index + 1}`, avatarUrl: "" }));
+		const membersPage = (after: unknown) => {
+			const start = typeof after === "string" ? Number(after) : 0;
+			const end = start + 100;
+			return { pageInfo: { hasNextPage: end < developers.length, endCursor: String(end) }, nodes: developers.slice(start, end) };
+		};
+		const github = fakeFetch((request) => {
+			const { query, variables } = graphqlBody(request);
+			if (query.startsWith("query OrganizationTeams")) {
+				const web = { slug: "web", name: "Web", members: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } };
+				const platform = { slug: "platform", name: "Platform", members: membersPage(null) };
+				return json({ data: { organization: { teams: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [platform, web] } } } });
+			}
+			if (query.startsWith("query TeamMembers")) return json({ data: { organization: { team: { members: membersPage(variables.after) } } } });
+			return new Response("unexpected", { status: 500 });
+		});
+		const [platform, web] = await source(github, { installationId: INSTALLATION_ID }).radar.teams();
+		expect(platform?.members.map((member) => member.login)).toEqual(developers.map((developer) => developer.login));
+		expect(web?.members).toEqual([]);
+		const memberQueries = graphqlQueries(github.requests).filter(({ query }) => query.startsWith("query TeamMembers"));
+		expect(memberQueries.map(({ variables }) => [variables.slug, variables.after])).toEqual([
+			["platform", "100"],
+			["platform", "200"],
 		]);
 	});
 });

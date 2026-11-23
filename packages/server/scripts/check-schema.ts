@@ -1,7 +1,7 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { buildSchema, parse, validate } from "graphql";
 import type { GraphQLSchema } from "graphql";
-import { OPEN_PULL_REQUESTS_QUERY, ORG_TEAMS_QUERY, buildPullRequestsQuery } from "../src/github/queries.ts";
+import { OPEN_PULL_REQUESTS_QUERY, ORG_TEAMS_QUERY, TEAM_MEMBERS_QUERY, buildPullRequestsQuery } from "../src/github/queries.ts";
 
 const SCHEMA_URL = "https://docs.github.com/public/fpt/schema.docs.graphql";
 const CACHE_DIR = new URL("../.cache/", import.meta.url);
@@ -39,6 +39,7 @@ const queries: [string, string][] = [
 	],
 	["open pull requests", OPEN_PULL_REQUESTS_QUERY],
 	["organization teams", ORG_TEAMS_QUERY],
+	["team members", TEAM_MEMBERS_QUERY],
 ];
 
 let failed = false;
