@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { asPrId, asSha, asTeamSlug } from "@radar/core";
 import type { CardConfig, PrSnapshot, ServerEvent } from "@radar/core";
@@ -181,6 +184,57 @@ describe("board", () => {
 			board.apply(refOf(likelyReady), likelyReady, at(3));
 			board.noteRerequest(likelyReady.id);
 			board.apply(refOf(approved), approved, at(4));
+			expect(store.heuristic()).toEqual({ confirmed: 1, rejected: 0 });
+		});
+
+		it("counts at most one outcome per pull request and head, across toggles, clears, a ready signal, and a re-review", () => {
+			const store = memoryStore();
+			const board = newBoard(store);
+			board.apply(refOf(likelyReady), likelyReady, at(3));
+			for (let round = 0; round < 5; round += 1) {
+				board.setSignal(likelyReady.id, "not_ready", at(3.5));
+				expect(cardOf(board.setSignal(likelyReady.id, null, at(3.5))).derived.state).toBe("likely_ready_for_rereview");
+			}
+			board.setSignal(likelyReady.id, "ready", at(3.6));
+			board.setSignal(likelyReady.id, null, at(3.6));
+			board.noteRerequest(likelyReady.id);
+			board.apply(refOf(approved), approved, at(4));
+			expect(store.heuristic()).toEqual({ confirmed: 0, rejected: 1 });
+		});
+
+		it("keeps the one outcome across a restart, and counts again once the head moves", () => {
+			const dir = mkdtempSync(join(tmpdir(), "radar-board-"));
+			const fileStore = () => createStore({ file: join(dir, "state.json"), clock: systemClock, log: silentLogger });
+			try {
+				const before = fileStore();
+				const board = newBoard(before);
+				board.apply(refOf(likelyReady), likelyReady, at(3));
+				board.setSignal(likelyReady.id, "not_ready", at(3.5));
+				board.setSignal(likelyReady.id, null, at(3.5));
+				before.flush();
+
+				const after = fileStore();
+				const restarted = newBoard(after);
+				restarted.apply(refOf(likelyReady), likelyReady, at(4));
+				restarted.setSignal(likelyReady.id, "not_ready", at(4));
+				expect(after.heuristic()).toEqual({ confirmed: 0, rejected: 1 });
+
+				const pushed: PrSnapshot = { ...likelyReady, headSha: asSha("c3"), headCommittedAt: hour(5) };
+				expect(cardOf(restarted.apply(refOf(pushed), pushed, at(5))).derived.state).toBe("likely_ready_for_rereview");
+				restarted.setSignal(pushed.id, "not_ready", at(5.5));
+				expect(after.heuristic()).toEqual({ confirmed: 0, rejected: 2 });
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		});
+
+		it("counts a re-review that lands with a new push once, at the head the card was judged on", () => {
+			const store = memoryStore();
+			const board = newBoard(store);
+			board.apply(refOf(likelyReady), likelyReady, at(3));
+			board.noteRerequest(likelyReady.id);
+			const reviewedAfterPush: PrSnapshot = { ...approved, headSha: asSha("c3"), headCommittedAt: hour(3.5) };
+			board.apply(refOf(reviewedAfterPush), reviewedAfterPush, at(4));
 			expect(store.heuristic()).toEqual({ confirmed: 1, rejected: 0 });
 		});
 

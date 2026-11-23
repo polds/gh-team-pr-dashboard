@@ -29,7 +29,6 @@ export interface HeldPr {
 
 interface Entry extends HeldPr {
 	endedSeenAt: number | null;
-	outcomeCounted: boolean;
 }
 
 export interface Board {
@@ -89,13 +88,6 @@ export function createBoard({ org, store, cardConfig }: { org: string; store: St
 		return entries.delete(id) ? [{ kind: "remove", id }] : [];
 	}
 
-	function currentSignal(snapshot: PrSnapshot): AuthorSignal | null {
-		const signal = store.signal(snapshot.id);
-		if (signal === null || signal.headSha === snapshot.headSha) return signal;
-		store.setSignal(snapshot.id, null);
-		return null;
-	}
-
 	function sinceFor(id: PrId, held: Entry | undefined, derived: Derived, now: Date): IsoTime {
 		if (held !== undefined) return held.derived.state === derived.state ? held.card.since : nowIso(now);
 		const stored = store.stateEntry(id);
@@ -119,10 +111,9 @@ export function createBoard({ org, store, cardConfig }: { org: string; store: St
 			.sort((a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt));
 	}
 
+	/** One outcome per pull request and head, so the counters measure precision per card. */
 	function countOutcome(entry: Entry, outcome: keyof HeuristicStats): void {
-		if (!isHeuristicLikelyReady(entry.derived) || entry.outcomeCounted) return;
-		store.count(outcome);
-		entry.outcomeCounted = true;
+		if (isHeuristicLikelyReady(entry.derived)) store.count(entry.snapshot.id, entry.snapshot.headSha, outcome);
 	}
 
 	function apply(ref: PrRef, snapshot: PrSnapshot | null, now: Date): ServerEvent[] {
@@ -139,32 +130,26 @@ export function createBoard({ org, store, cardConfig }: { org: string; store: St
 		const endedSeenAt = ended ? (held?.endedSeenAt ?? now.getTime()) : null;
 		if (endedSeenAt !== null && now.getTime() - endedSeenAt >= ENDED_LINGER_MS) return remove(id);
 
+		const fresh = held === undefined ? [] : newReviews(held, snapshot);
+		if (held !== undefined && fresh.some((review) => held.derived.actors.some((actor) => actor.login === review.reviewer.login))) {
+			countOutcome(held, "confirmed");
+		}
+		store.forgetOtherHeads(id, snapshot.headSha);
+
 		learnPeople(snapshot);
 		recordReviews(history, snapshot);
-		const derived = derive(snapshot, { teams: teamMembers, authorSignal: currentSignal(snapshot) });
+		const derived = derive(snapshot, { teams: teamMembers, authorSignal: store.signal(id) });
 		const since = sinceFor(id, held, derived, now);
 		const built = card(snapshot, derived, since, now);
 		const events: ServerEvent[] = [];
 		if (held === undefined || !isDeepStrictEqual(held.card, built)) events.push({ kind: "card", card: built });
 
-		const fresh = held === undefined ? [] : newReviews(held, snapshot);
 		const [newest] = fresh;
 		if (held !== undefined && newest !== undefined && held.derived.court === "reviewers" && derived.court !== "reviewers") {
 			events.push({ kind: "celebrate", id, repo: built.repo, number: snapshot.number, title: snapshot.title, by: newest.reviewer });
 		}
-		if (held !== undefined && fresh.some((review) => held.derived.actors.some((actor) => actor.login === review.reviewer.login))) {
-			countOutcome(held, "confirmed");
-		}
 
-		const sameSpell = derived.state === "likely_ready_for_rereview" && held?.derived.state === "likely_ready_for_rereview";
-		entries.set(id, {
-			ref: refOf(snapshot),
-			snapshot,
-			derived,
-			card: built,
-			endedSeenAt,
-			outcomeCounted: sameSpell && held.outcomeCounted,
-		});
+		entries.set(id, { ref: refOf(snapshot), snapshot, derived, card: built, endedSeenAt });
 		if (!ended) store.setStateEntry(id, { state: derived.state, since });
 		return events;
 	}
@@ -200,11 +185,8 @@ export function createBoard({ org, store, cardConfig }: { org: string; store: St
 		setSignal(id, kind, now) {
 			const held = entries.get(id);
 			if (held === undefined) return [];
-			const signal = kind === null ? null : { kind, headSha: held.snapshot.headSha, at: nowIso(now) };
-			const prior = store.signal(id);
-			const repeated = prior?.kind === signal?.kind && (signal === null || prior?.headSha === signal.headSha);
-			if (kind !== null && !repeated) countOutcome(held, kind === "ready" ? "confirmed" : "rejected");
-			store.setSignal(id, signal);
+			if (kind !== null) countOutcome(held, kind === "ready" ? "confirmed" : "rejected");
+			store.setSignal(id, kind === null ? null : { kind, headSha: held.snapshot.headSha, at: nowIso(now) });
 			return apply(held.ref, held.snapshot, now);
 		},
 

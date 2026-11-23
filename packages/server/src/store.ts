@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { asPrId, asSha, isIsoTime } from "@radar/core";
-import type { AuthorSignal, HeuristicStats, IsoTime, PrId, PrState } from "@radar/core";
+import type { AuthorSignal, HeuristicStats, IsoTime, PrId, PrState, Sha } from "@radar/core";
 import type { Clock, Timer } from "./clock.ts";
 import { errorMessage } from "./log.ts";
 import type { Logger } from "./log.ts";
@@ -19,8 +19,11 @@ export interface Store {
 	stateEntry(id: PrId): StateEntry | null;
 	setStateEntry(id: PrId, entry: StateEntry): void;
 	heuristic(): HeuristicStats;
-	count(outcome: keyof HeuristicStats): void;
-	/** Drops the signal and the state-entry record of one pull request. */
+	/** Adds one to the `outcome` counter unless an outcome is already counted for this pull request at `headSha`. */
+	count(id: PrId, headSha: Sha, outcome: keyof HeuristicStats): void;
+	/** Drops the signal and the counted outcome of a pull request when they belong to a head other than `headSha`. */
+	forgetOtherHeads(id: PrId, headSha: Sha): void;
+	/** Drops every record of one pull request. */
 	forget(id: PrId): void;
 	/** Drops every record whose pull request is not in `ids`. */
 	retain(ids: ReadonlySet<PrId>): void;
@@ -47,10 +50,12 @@ const fileSchema = z.object({
 	signals: z.record(z.string(), z.object({ kind: z.enum(["ready", "not_ready"]), headSha: z.string().transform(asSha), at: isoTimeSchema })),
 	states: z.record(z.string(), z.object({ state: z.enum(PR_STATES), since: isoTimeSchema })),
 	heuristic: z.object({ confirmed: count, rejected: count }),
+	/** The head SHA at which each pull request's one heuristic outcome was counted. */
+	counted: z.record(z.string(), z.string().transform(asSha)).default({}),
 });
 type StoredFile = z.infer<typeof fileSchema>;
 
-const EMPTY: StoredFile = { version: 1, signals: {}, states: {}, heuristic: { confirmed: 0, rejected: 0 } };
+const EMPTY: StoredFile = { version: 1, signals: {}, states: {}, heuristic: { confirmed: 0, rejected: 0 }, counted: {} };
 
 function load(file: string, log: Logger): StoredFile {
 	let text: string;
@@ -84,6 +89,7 @@ export function createStore({
 	const signals = new Map(Object.entries(initial.signals).map(([id, signal]) => [asPrId(id), signal]));
 	const states = new Map(Object.entries(initial.states).map(([id, entry]) => [asPrId(id), entry]));
 	const heuristic: HeuristicStats = { ...initial.heuristic };
+	const counted = new Map(Object.entries(initial.counted).map(([id, headSha]) => [asPrId(id), headSha]));
 	let timer: Timer | null = null;
 	let dirty = false;
 
@@ -96,6 +102,7 @@ export function createStore({
 			signals: Object.fromEntries(signals),
 			states: Object.fromEntries(states),
 			heuristic,
+			counted: Object.fromEntries(counted),
 		};
 		const temporary = `${file}.${process.pid}.tmp`;
 		try {
@@ -116,7 +123,8 @@ export function createStore({
 	function forget(id: PrId): void {
 		const hadSignal = signals.delete(id);
 		const hadState = states.delete(id);
-		if (hadSignal || hadState) changed();
+		const hadCounted = counted.delete(id);
+		if (hadSignal || hadState || hadCounted) changed();
 	}
 
 	return {
@@ -139,13 +147,22 @@ export function createStore({
 			changed();
 		},
 		heuristic: () => ({ ...heuristic }),
-		count(outcome) {
+		count(id, headSha, outcome) {
+			if (counted.get(id) === headSha) return;
+			counted.set(id, headSha);
 			heuristic[outcome] += 1;
 			changed();
 		},
+		forgetOtherHeads(id, headSha) {
+			const signal = signals.get(id);
+			const hadSignal = signal !== undefined && signal.headSha !== headSha && signals.delete(id);
+			const countedAt = counted.get(id);
+			const hadCounted = countedAt !== undefined && countedAt !== headSha && counted.delete(id);
+			if (hadSignal || hadCounted) changed();
+		},
 		forget,
 		retain(ids) {
-			for (const id of new Set([...signals.keys(), ...states.keys()])) {
+			for (const id of new Set([...signals.keys(), ...states.keys(), ...counted.keys()])) {
 				if (!ids.has(id)) forget(id);
 			}
 		},

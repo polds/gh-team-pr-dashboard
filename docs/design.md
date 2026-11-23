@@ -166,6 +166,7 @@ The server writes one small JSON file on a persistent volume.
 - The author signals, keyed by pull request and head SHA.
 - The observed state-entry time for each open pull request.
 - Two counters for the heuristic: confirmed and rejected.
+- For each pull request, the head SHA at which its one heuristic outcome was counted. A card counts at most once per head, across restarts. The record goes when the head moves or the pull request leaves the board.
 
 The file holds no per-person history. Sessions live in an encrypted cookie. Notification rules and the presence switch live in the browser's local storage. Losing the file costs the author signals and makes time-in-state fall back to the estimate.
 

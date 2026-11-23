@@ -41,14 +41,48 @@ describe("createStore", () => {
 		const store = open();
 		store.setSignal(PR, { kind: "not_ready", headSha: asSha("abc"), at: SINCE });
 		store.setStateEntry(PR, { state: "changes_requested", since: SINCE });
-		store.count("confirmed");
-		store.count("rejected");
-		store.count("confirmed");
+		store.count(PR, asSha("abc"), "confirmed");
+		store.count(OTHER, asSha("abc"), "rejected");
+		store.count(PR, asSha("def"), "confirmed");
 		store.flush();
 		const reopened = open();
 		expect(reopened.signal(PR)).toEqual({ kind: "not_ready", headSha: "abc", at: SINCE });
 		expect(reopened.stateEntry(PR)).toEqual({ state: "changes_requested", since: SINCE });
 		expect(reopened.heuristic()).toEqual({ confirmed: 2, rejected: 1 });
+	});
+
+	it("counts one outcome per pull request and head, across a restart, and again after the head moves or the record is forgotten", () => {
+		const store = open();
+		store.count(PR, asSha("abc"), "rejected");
+		store.count(PR, asSha("abc"), "confirmed");
+		store.flush();
+		const reopened = open();
+		reopened.count(PR, asSha("abc"), "rejected");
+		reopened.forgetOtherHeads(PR, asSha("abc"));
+		reopened.count(PR, asSha("abc"), "rejected");
+		expect(reopened.heuristic()).toEqual({ confirmed: 0, rejected: 1 });
+		reopened.forgetOtherHeads(PR, asSha("def"));
+		reopened.count(PR, asSha("abc"), "rejected");
+		reopened.forget(PR);
+		reopened.count(PR, asSha("abc"), "confirmed");
+		reopened.retain(new Set());
+		reopened.count(PR, asSha("abc"), "confirmed");
+		expect(reopened.heuristic()).toEqual({ confirmed: 2, rejected: 2 });
+	});
+
+	it("drops a signal from another head and keeps one from this head", () => {
+		const store = open();
+		store.setSignal(PR, { kind: "not_ready", headSha: asSha("abc"), at: SINCE });
+		store.forgetOtherHeads(PR, asSha("abc"));
+		expect(store.signal(PR)).not.toBeNull();
+		store.forgetOtherHeads(PR, asSha("def"));
+		expect(store.signal(PR)).toBeNull();
+	});
+
+	it("reads a file written before outcomes were tracked per head", () => {
+		mkdirSync(join(dir, "nested"));
+		writeFileSync(file, JSON.stringify({ version: 1, signals: {}, states: {}, heuristic: { confirmed: 3, rejected: 1 } }));
+		expect(open().heuristic()).toEqual({ confirmed: 3, rejected: 1 });
 	});
 
 	it("debounces writes and leaves no temporary file behind", () => {
@@ -88,7 +122,7 @@ describe("createStore", () => {
 
 	it("keeps everything in memory when it has no file", () => {
 		const store = createStore({ file: null, clock: systemClock, log: recordingLogger().log });
-		store.count("confirmed");
+		store.count(PR, asSha("abc"), "confirmed");
 		store.flush();
 		expect(store.heuristic()).toEqual({ confirmed: 1, rejected: 0 });
 		expect(vi.getTimerCount()).toBe(0);
