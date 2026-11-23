@@ -28,7 +28,6 @@ export interface Store {
 	forget(id: PrId): void;
 	/** Drops every record whose pull request is not in `ids`. */
 	retain(ids: ReadonlySet<PrId>): void;
-	/** Writes pending changes now. */
 	flush(): void;
 }
 
