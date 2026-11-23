@@ -62,11 +62,18 @@ export interface PresenceEntry {
 	viewing: PrId | null;
 }
 
+/** Aggregate outcomes of `likely_ready_for_rereview` cards. It holds no names. */
+export interface HeuristicStats {
+	confirmed: number;
+	rejected: number;
+}
+
 export interface BoardResponse {
 	viewer: Viewer;
 	config: BoardConfig;
 	cards: Card[];
 	presence: PresenceEntry[];
+	heuristic: HeuristicStats;
 	serverTime: IsoTime;
 }
 
