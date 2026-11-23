@@ -12,7 +12,9 @@ npm run build
 RADAR_DEMO=1 npm start
 ```
 
-Open `http://localhost:8080`. Pick any demo user. The simulated pull requests change state every few seconds.
+Open `http://localhost:8080`. Pick any demo user. A scripted story plays one step every 8 seconds and starts over after the last step.
+
+To step by hand, set `RADAR_DEMO_INTERVAL_SECONDS=0`, then run `curl -X POST localhost:8080/demo/step` for the next step or `curl -X POST localhost:8080/demo/reset` to start over. The demo keeps nothing on disk and makes a new session secret at each start. It simulates the one-click re-request, so `RADAR_REREQUEST_ENABLED` defaults to `true` in the demo.
 
 ## Create the GitHub App
 
@@ -55,9 +57,14 @@ Non-secret settings are in `deploy/k8s/config.yaml`.
 | `RADAR_BOT_LOGINS` | `renovate,dependabot,github-actions` | Authors whose pull requests go in the bot group. |
 | `RADAR_REPO_DENYLIST` | empty | Repository names to leave off the board. |
 | `RADAR_HELP_WANTED_AFTER_HOURS` | `24` | Business hours that a pull request waits on reviewers before it enters the help-wanted lane. |
-| `RADAR_RECONCILE_SECONDS` | `300` | Seconds between full sweeps. |
+| `RADAR_RECONCILE_SECONDS` | `300` | Seconds between reconcile sweeps. |
+| `RADAR_FULL_SWEEP_EVERY` | `12` | Every this many sweeps, refetch every open pull request, not only the ones whose listing changed. |
 | `RADAR_REREQUEST_ENABLED` | `false` | Set to `true` only with the write permission above. |
 | `RADAR_DATA_DIR` | `./data` | Directory for the state file. |
+| `RADAR_WEB_DIST` | `packages/web/dist` | Directory of the web build. The image sets it. |
+| `GITHUB_INSTALLATION_ID` | looked up | The app installation's ID. When it is unset, Radar looks up the organization's installation. |
+| `RADAR_DEMO` | empty | `1` runs against the simulated organization. No GitHub variable is needed. |
+| `RADAR_DEMO_INTERVAL_SECONDS` | `8` | Seconds between demo steps. `0` turns autoplay off. |
 | `PORT` | `8080` | Listen port. |
 
 Secrets go in a Kubernetes Secret named `radar-secrets`. Do not put them in git.
@@ -67,7 +74,7 @@ Secrets go in a Kubernetes Secret named `radar-secrets`. Do not put them in git.
 | `GITHUB_APP_ID` | The app's numeric ID. |
 | `GITHUB_APP_CLIENT_ID` | The app's client ID. |
 | `GITHUB_APP_CLIENT_SECRET` | The client secret. |
-| `GITHUB_APP_PRIVATE_KEY` | The private key in PEM format. |
+| `GITHUB_APP_PRIVATE_KEY` | The private key in PEM format. Or set `GITHUB_APP_PRIVATE_KEY_FILE` to the path of the PEM file. |
 | `GITHUB_WEBHOOK_SECRET` | The webhook secret. |
 | `RADAR_SESSION_SECRET` | Output of `openssl rand -hex 32`. It encrypts the session cookie. |
 
@@ -109,7 +116,7 @@ If your network allows no inbound traffic from GitHub, remove `ingress-webhook.y
 
 ## Check that it works
 
-1. Open `RADAR_BASE_URL/healthz`. It returns `ok` and the time of the last sweep.
+1. Open `RADAR_BASE_URL/healthz`. It returns `{"ok":true,"lastSweepAt":...}`. `lastSweepAt` is null until the first sweep finishes.
 2. Sign in. A member of the organization sees the board. A non-member sees a 403 page.
 3. In the GitHub App settings, open **Advanced** and look at **Recent Deliveries**. Each delivery shows a `202` response.
 4. Open a draft pull request in any covered repository. The card appears in the drafts group within a few seconds.
@@ -118,6 +125,7 @@ If your network allows no inbound traffic from GitHub, remove `ingress-webhook.y
 
 | Symptom | Cause and fix |
 |---|---|
+| The pod exits at start and logs `config.invalid` | A variable is missing or malformed. The log line names each one. |
 | Deliveries show `401` | The webhook secret in GitHub does not match `GITHUB_WEBHOOK_SECRET`. |
 | The board is empty after start | The first sweep is still running, or the app is not installed on any repository. Check the logs for `reconcile`. |
 | Cards update only every few minutes | Webhooks do not arrive. Check **Recent Deliveries** and the webhook ingress. |
