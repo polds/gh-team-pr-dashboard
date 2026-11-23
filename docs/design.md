@@ -214,8 +214,24 @@ The rules are a pure function in `packages/core`.
 7. **History and time.** Radar keeps the current state and its entry time only. It keeps no history. The card shows calendar time. The help-wanted threshold counts business hours, Monday to Friday, in the configured time zone.
 8. **Heuristic accuracy.** The target is 90 percent precision. Precision is the share of `likely_ready_for_rereview` cards that end in a re-review or an author confirmation, as opposed to an author "not ready yet". The server counts both outcomes in aggregate with no names. Until the count shows 90 percent over at least 50 cards, heuristic states stay out of notifications by default. They always show in Mine with the **Heuristic** label.
 
+## What the adversarial review changed
+
+Two reviewers tried to break the first build and had to prove each finding with a run. They proved 14 distinct failures. Each one is fixed. The 13 code fixes each have a test or an end-to-end check that failed first. The TLS fix is a manifest and runbook change with no automated test.
+
+- Opt-outs now hold across tabs. Turning presence or notifications off in one tab stops every tab, because every tab reads the stored setting before it acts.
+- An event stream ends when its session expires, and a tab whose stream is refused shows the sign-in screen.
+- A demo session cannot open the real board. The cookie key is derived from the secret and the mode together.
+- The webhook receiver refuses a body over 25 MB before it reads it, and drops any event for a repository outside the organization.
+- Every connection that feeds the state is paged to its end: review threads, reviews, review requests, check contexts, and team members. A snapshot is never built from a truncated connection.
+- A reviewer's newer feedback overrides the author's stored "ready" signal. A reply on an outdated thread after the push reopens it. A pending review request keeps its reviewer in Mine while another reviewer's change request waits on the author.
+- A queued notification is dropped at delivery when the user has since opted out of its kind.
+- The heuristic totals count one outcome for each pull request and head commit.
+- Both ingresses serve HTTPS.
+
 ## What stays unproven
 
-- Radar has not run against the Atum organization. The GraphQL query is validated against GitHub's public schema, and the pipeline is verified against a simulated source.
+- Radar has not run against the Atum organization, or against GitHub at all. The nine GraphQL queries are validated against GitHub's public schema, and the pipeline is verified against a simulated source and a fake GitHub in tests. The first run against a real installation will show whether a GitHub App with only the listed permissions can read every selected field.
+- The Kubernetes manifests parse, and the image runs as a non-root user with a read-only root file system and a 512 MiB limit. Nobody has applied the manifests to a GKE cluster.
 - The heuristic's precision is unmeasured until the team uses it.
+- The GraphQL cost of a sweep is an estimate from GitHub's cost formula, not a measurement.
 - The "Slack gets quieter" outcome in the brief needs a baseline count of review-request messages in the channel before rollout.
