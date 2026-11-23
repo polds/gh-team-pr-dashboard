@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { DEFAULT_NOTIFICATION_PREFS } from "@radar/core";
 import type { NotificationPrefs } from "@radar/core";
 
@@ -13,28 +13,12 @@ export const DIGEST_CHOICES = [0, 15, 30, 60] as const;
 const MINUTES_PER_DAY = 24 * 60;
 
 /** `localStorage`, or null where reading it throws (blocked cookies, some private modes). */
-export function browserStorage(): PrefsStorage | null {
+function browserStorage(): PrefsStorage | null {
 	try {
 		return window.localStorage;
 	} catch {
 		return null;
 	}
-}
-
-export function readNotificationPrefs(storage: PrefsStorage | null): NotificationPrefs {
-	return parseNotificationPrefs(readJson(storage, NOTIFICATIONS_KEY));
-}
-
-export function writeNotificationPrefs(storage: PrefsStorage | null, prefs: NotificationPrefs): void {
-	write(storage, NOTIFICATIONS_KEY, JSON.stringify(prefs));
-}
-
-export function readPresenceOn(storage: PrefsStorage | null): boolean {
-	return readJson(storage, PRESENCE_KEY) === true;
-}
-
-export function writePresenceOn(storage: PrefsStorage | null, on: boolean): void {
-	write(storage, PRESENCE_KEY, JSON.stringify(on));
 }
 
 /** Each field falls back to its off default on its own, so one bad field does not reset the rest. */
@@ -66,37 +50,99 @@ function isMinuteOfDay(value: unknown): value is number {
 	return typeof value === "number" && Number.isInteger(value) && value >= 0 && value < MINUTES_PER_DAY;
 }
 
-function readJson(storage: PrefsStorage | null, key: string): unknown {
+export interface StoredSetting<T> {
+	/** The stored value, read fresh on every call. */
+	read(): T;
+	write(value: T): void;
+	/** Calls `listener` when this tab writes the setting or another tab changes it. */
+	subscribe(listener: () => void): () => void;
+}
+
+export interface SettingEnv {
+	storage(): PrefsStorage | null;
+	/** Calls `listener` with the key of each `storage` event, which fires when another tab changes storage. */
+	onOtherTab(listener: (key: string | null) => void): () => void;
+}
+
+const browserEnv: SettingEnv = {
+	storage: browserStorage,
+	onOtherTab(listener) {
+		const handle = (event: StorageEvent) => listener(event.key);
+		window.addEventListener("storage", handle);
+		return () => window.removeEventListener("storage", handle);
+	},
+};
+
+/**
+ * One setting kept in storage, which every tab reads as the truth.
+ * A write that storage refuses still holds for this tab, until another tab changes the setting.
+ */
+export function storedSetting<T>(key: string, parse: (value: unknown) => T, env: SettingEnv): StoredSetting<T> {
+	const listeners = new Set<() => void>();
+	let unstored: string | null = null;
+	let cachedRaw: string | null | undefined;
+	let cached: T;
+
+	const read = () => {
+		const raw = unstored ?? getRaw(env.storage(), key);
+		if (raw !== cachedRaw) {
+			cachedRaw = raw;
+			cached = parse(parseJson(raw));
+		}
+		return cached;
+	};
+
+	const write = (value: T) => {
+		const raw = JSON.stringify(value);
+		unstored = setRaw(env.storage(), key, raw) ? null : raw;
+		for (const listener of [...listeners]) listener();
+	};
+
+	const subscribe = (listener: () => void) => {
+		listeners.add(listener);
+		const stop = env.onOtherTab((changed) => {
+			if (changed !== key && changed !== null) return;
+			unstored = null;
+			listener();
+		});
+		return () => {
+			listeners.delete(listener);
+			stop();
+		};
+	};
+
+	return { read, write, subscribe };
+}
+
+export const notificationPrefsSetting = storedSetting(NOTIFICATIONS_KEY, parseNotificationPrefs, browserEnv);
+export const presenceSetting = storedSetting(PRESENCE_KEY, (value) => value === true, browserEnv);
+
+export function useStoredSetting<T>(setting: StoredSetting<T>): [T, (value: T) => void] {
+	return [useSyncExternalStore(setting.subscribe, setting.read), setting.write];
+}
+
+function getRaw(storage: PrefsStorage | null, key: string): string | null {
 	try {
-		const raw = storage?.getItem(key) ?? null;
+		return storage?.getItem(key) ?? null;
+	} catch {
+		return null;
+	}
+}
+
+function parseJson(raw: string | null): unknown {
+	try {
 		return raw === null ? null : JSON.parse(raw);
 	} catch {
 		return null;
 	}
 }
 
-function write(storage: PrefsStorage | null, key: string, value: string): void {
+function setRaw(storage: PrefsStorage | null, key: string, raw: string): boolean {
+	if (storage === null) return false;
 	try {
-		storage?.setItem(key, value);
+		storage.setItem(key, raw);
+		return true;
 	} catch {
-		// Storage full or blocked: the setting still holds for this tab.
+		return false;
 	}
-}
-
-export function useNotificationPrefs(): [NotificationPrefs, (prefs: NotificationPrefs) => void] {
-	const [prefs, setPrefs] = useState(() => readNotificationPrefs(browserStorage()));
-	const update = useCallback((next: NotificationPrefs) => {
-		setPrefs(next);
-		writeNotificationPrefs(browserStorage(), next);
-	}, []);
-	return [prefs, update];
-}
-
-export function usePresenceSwitch(): [boolean, (on: boolean) => void] {
-	const [on, setOn] = useState(() => readPresenceOn(browserStorage()));
-	const update = useCallback((next: boolean) => {
-		setOn(next);
-		writePresenceOn(browserStorage(), next);
-	}, []);
-	return [on, update];
 }

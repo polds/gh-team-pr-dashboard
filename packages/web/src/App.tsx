@@ -6,7 +6,7 @@ import { fetchBoard, sendPresence, sendSignal, signOut } from "./api.ts";
 import { NO_FILTERS, applyFilters, filterOptions, isFiltering } from "./filters.ts";
 import { useDesktopNotifications } from "./notifications.ts";
 import { usePresence } from "./presence.ts";
-import { usePresenceSwitch, useNotificationPrefs } from "./prefs.ts";
+import { notificationPrefsSetting, presenceSetting, useStoredSetting } from "./prefs.ts";
 import { INITIAL_STATE, reduce } from "./state.ts";
 import type { Action, ClientState } from "./state.ts";
 import { openEventStream } from "./stream.ts";
@@ -99,8 +99,8 @@ type ReadyState = Extract<ClientState, { status: "ready" }>;
 function ReadyBoard({ state, dispatch }: { state: ReadyState; dispatch: Dispatch<Action> }) {
 	const { board, cards, presence } = state;
 	const { viewer, config } = board;
-	const [prefs, setPrefs] = useNotificationPrefs();
-	const [presenceOn, setPresenceOn] = usePresenceSwitch();
+	const [prefs, setPrefs] = useStoredSetting(notificationPrefsSetting);
+	const [presenceOn, setPresenceOn] = useStoredSetting(presenceSetting);
 	const [filters, setFilters] = useState(NO_FILTERS);
 	const [detailId, setDetailId] = useState<PrId | null>(null);
 	const signals = useSignals(dispatch);
@@ -114,7 +114,7 @@ function ReadyBoard({ state, dispatch }: { state: ReadyState; dispatch: Dispatch
 	const needsYou = mine.needsMyReview.length + mine.myTurn.length;
 
 	usePresence(presenceOn, detailId);
-	useDesktopNotifications({ cards: all, login: viewer.login, prefs });
+	useDesktopNotifications({ cards: all, login: viewer.login });
 
 	useEffect(() => {
 		document.title = needsYou === 0 ? PRODUCT : `(${needsYou}) ${PRODUCT}`;

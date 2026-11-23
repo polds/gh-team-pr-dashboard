@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { INITIAL_NOTIFIER_STATE, notifierStep } from "@radar/core";
-import type { Card, Login, NotificationPrefs, NotifierInput, OutgoingNotification } from "@radar/core";
+import type { Card, Login, NotifierInput, OutgoingNotification } from "@radar/core";
 import { minuteOfDay } from "./format.ts";
+import { notificationPrefsSetting } from "./prefs.ts";
 
 const TICK_MS = 30_000;
 
@@ -21,20 +22,29 @@ export async function askPermission(): Promise<Permission> {
 	}
 }
 
-export function useDesktopNotifications({ cards, login, prefs }: { cards: Card[]; login: Login; prefs: NotificationPrefs }): void {
+/** Reads the stored prefs on every step, so a change from any tab applies before the next notification. */
+export function useDesktopNotifications({ cards, login }: { cards: Card[]; login: Login }): void {
 	const notifier = useRef(INITIAL_NOTIFIER_STATE);
 	const previous = useRef<Card[] | null>(null);
-	const granted = notificationPermission() === "granted";
-	const effective = useMemo(() => (granted ? prefs : { ...prefs, enabled: false }), [prefs, granted]);
 
 	const step = useCallback(
 		(input: NotifierInput) => {
+			const stored = notificationPrefsSetting.read();
+			const prefs = notificationPermission() === "granted" ? stored : { ...stored, enabled: false };
 			const now = new Date();
-			const result = notifierStep(notifier.current, input, { login, prefs: effective, nowMs: now.getTime(), minuteOfDay: minuteOfDay(now) });
+			const result = notifierStep(notifier.current, input, { login, prefs, nowMs: now.getTime(), minuteOfDay: minuteOfDay(now) });
 			notifier.current = result.state;
 			for (const notification of result.deliver) raise(notification);
 		},
-		[login, effective],
+		[login],
+	);
+
+	useEffect(
+		() =>
+			notificationPrefsSetting.subscribe(() => {
+				if (!notificationPrefsSetting.read().enabled) notifier.current = INITIAL_NOTIFIER_STATE;
+			}),
+		[],
 	);
 
 	useEffect(() => {

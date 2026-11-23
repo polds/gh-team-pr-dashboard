@@ -23,7 +23,7 @@ export function NotificationsMenu({ prefs, onChange }: { prefs: NotificationPref
 	const root = useRef<HTMLDivElement>(null);
 	const button = useRef<HTMLButtonElement>(null);
 	const panelId = useId();
-	const on = prefs.enabled && permission === "granted";
+	const on = prefs.enabled && notificationPermission() === "granted";
 
 	useEffect(() => {
 		if (!open) return;

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { PrId } from "@radar/core";
 import { sendPresence } from "./api.ts";
+import { presenceSetting } from "./prefs.ts";
 
 const HEARTBEAT_MS = 20_000;
 
@@ -14,7 +15,9 @@ export function usePresence(enabled: boolean, viewing: PrId | null): void {
 
 	useEffect(() => {
 		if (!enabled) return;
-		const beat = () => sendPresence({ active: true, viewing: viewingRef.current });
+		const beat = () => {
+			if (presenceSetting.read()) sendPresence({ active: true, viewing: viewingRef.current });
+		};
 		const leave = () => sendPresence({ active: false, viewing: null }, { keepalive: true });
 		const back = (event: PageTransitionEvent) => {
 			if (event.persisted) beat();

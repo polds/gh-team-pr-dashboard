@@ -55,13 +55,18 @@ const NOTIFICATION_STUB = `
 
 async function openAs(browser, login, { stubNotifications = false } = {}) {
 	const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+	if (stubNotifications) await context.addInitScript(NOTIFICATION_STUB);
+	return openTab(context, `/auth/demo?login=${login}`);
+}
+
+/** Another tab in the same browser, sharing its session and `localStorage`. */
+async function openTab(context, path = "/") {
 	const page = await context.newPage();
 	const presenceCalls = [];
 	page.on("request", (request) => {
 		if (request.url().endsWith("/api/presence")) presenceCalls.push(request.postData());
 	});
-	if (stubNotifications) await page.addInitScript(NOTIFICATION_STUB);
-	await page.goto(`${base}/auth/demo?login=${login}`);
+	await page.goto(`${base}${path}`);
 	await page.waitForSelector('[data-testid="mine"]');
 	return { page, context, presenceCalls };
 }
@@ -77,6 +82,8 @@ async function appears(page, selector, timeout = 5000) {
 		return null;
 	}
 }
+
+const HEARTBEAT_MS = 20_000;
 
 async function enableNotifications(page) {
 	await page.click('[data-testid="notifications-button"]');
@@ -129,6 +136,10 @@ try {
 	const barbaraOff = await openAs(browser, "barbara", { stubNotifications: true });
 	const barbaraOn = await openAs(browser, "barbara", { stubNotifications: true });
 	await enableNotifications(barbaraOn.page);
+	const barbaraTabA = await openAs(browser, "barbara", { stubNotifications: true });
+	await enableNotifications(barbaraTabA.page);
+	const barbaraTabB = await openTab(barbaraTabA.context);
+	await enableNotifications(barbaraTabA.page);
 	await step();
 	const turned = await appears(barbaraOn.page, card("mine-my-turn", "atum/monorepo#4110"));
 	await appears(barbaraOff.page, card("mine-my-turn", "atum/monorepo#4110"));
@@ -138,6 +149,11 @@ try {
 	check("a change request puts the pull request in the author's Mine", turned !== null);
 	check("an opted-in browser raises a desktop notification when it becomes the user's turn", delivered.length === 1, JSON.stringify(delivered));
 	check("a browser that did not opt in raises none for the same event", silent.length === 0);
+	await appears(barbaraTabB.page, card("mine-my-turn", "atum/monorepo#4110"));
+	await barbaraTabB.page.waitForFunction(() => window.__notifications.length > 0, null, { timeout: 1000 }).catch(() => {});
+	const otherTab = await barbaraTabB.page.evaluate(() => window.__notifications);
+	const otherTabLabel = await barbaraTabB.page.textContent('[data-testid="notifications-button"]');
+	check("turning notifications off in one tab silences the other tab", otherTab.length === 0 && /off/.test(otherTabLabel ?? ""), `${JSON.stringify(otherTab)} button: ${otherTabLabel}`);
 
 	await ken.page.click('[data-testid="presence-toggle"]');
 	await linus.page.click('[data-testid="presence-toggle"]');
@@ -169,6 +185,17 @@ try {
 	const board = await (await ken.context.request.get(`${base}/api/board`)).json();
 	const perPerson = JSON.stringify(board.heuristic);
 	check("the board API exposes heuristic outcomes only as two totals", Object.keys(board.heuristic).sort().join() === "confirmed,rejected", perPerson);
+
+	const margaretTabA = await openAs(browser, "margaret");
+	await margaretTabA.page.click('[data-testid="presence-toggle"]');
+	const margaretTabB = await openTab(margaretTabA.context);
+	await margaretTabA.page.click('[data-testid="presence-toggle"]');
+	const sentBefore = margaretTabB.presenceCalls.length;
+	await new Promise((r) => setTimeout(r, HEARTBEAT_MS + 1500));
+	const heartbeats = margaretTabB.presenceCalls.slice(sentBefore).filter((body) => JSON.parse(body ?? "{}").active === true);
+	const otherSwitch = await margaretTabB.page.getAttribute('[data-testid="presence-toggle"]', "aria-checked");
+	const present = (await (await linus.context.request.get(`${base}/api/board`)).json()).presence.map((entry) => entry.person.login);
+	check("turning presence off in one tab stops the other tab's heartbeats", heartbeats.length === 0 && otherSwitch === "false" && !present.includes("margaret"), `heartbeats ${JSON.stringify(heartbeats)}, switch ${otherSwitch}, present ${JSON.stringify(present)}`);
 
 	if (shots) {
 		await ken.page.screenshot({ path: join(shots, "board-ken-after.png"), fullPage: true });
