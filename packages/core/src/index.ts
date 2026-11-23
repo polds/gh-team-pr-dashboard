@@ -6,3 +6,4 @@ export * from "./card.ts";
 export * from "./order.ts";
 export * from "./mine.ts";
 export * from "./reviewHistory.ts";
+export * from "./notify.ts";
